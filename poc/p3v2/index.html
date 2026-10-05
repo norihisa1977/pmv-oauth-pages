@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PMV P3 Synthetic Video Gate</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;margin:24px;line-height:1.5}
+h1{font-size:1.35rem}button{font:inherit;padding:12px 14px;margin:6px 6px 6px 0}
+pre{white-space:pre-wrap;word-break:break-word;background:#f5f5f5;padding:12px}
+.note{background:#fff8d8;padding:12px}video{width:100%;max-width:480px;background:#000}
+</style>
+</head>
+<body>
+<h1>PMV iPhone PWA — P3 Synthetic Video Gate</h1>
+<p class="note"><strong>PoC only.</strong> Synthetic 120-second MP4 only. No Google Drive, Production media, PMV password, Production KEK, or Media DEK. Plaintext is reconstructed in memory as a Blob only. libsodium is loaded from jsDelivr for this PoC; Production T1 trust remains unresolved.</p>
+<p>This gate tests independent XChaCha20-Poly1305 AEAD segments, tamper fail-closed, 3 seeks, and 120-second playback.</p>
+<p id="status" style="font-weight:700">Initializing…</p><button id="prepare">Prepare encrypted segments</button>
+<button id="seeks" disabled>Run 3 seeks</button>
+<button id="play" disabled>Start 120s playback</button>
+<button id="copy">Copy report</button>
+<video id="v" playsinline muted controls></video>
+<pre id="report">Loading libsodium…</pre>
+<script type="module">
+import sodium from "https://cdn.jsdelivr.net/npm/libsodium-wrappers-sumo@0.8.4/+esm";
+
+const FIXTURE_B64="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";
+const SEGMENT_SIZE=1024; // PoC chunking only; crypto construction is independent-AEAD compatible.
+const out=document.getElementById("report"), v=document.getElementById("v"), status=document.getElementById("status");
+const lines=[]; const add=s=>{lines.push(s);out.textContent=lines.join("\n")};
+const b64bytes=s=>{const x=atob(s),a=new Uint8Array(x.length);for(let i=0;i<x.length;i++)a[i]=x.charCodeAt(i);return a};
+const concat=parts=>{let n=0;for(const p of parts)n+=p.length;const o=new Uint8Array(n);let z=0;for(const p of parts){o.set(p,z);z+=p.length}return o};
+const once=(el,name,timeout=10000)=>new Promise((resolve,reject)=>{const t=setTimeout(()=>reject(new Error(name+"_timeout")),timeout);el.addEventListener(name,()=>{clearTimeout(t);resolve()},{once:true})});
+
+let objectUrl=null, waiting=0, stalled=0, mediaErrors=0;
+v.addEventListener("waiting",()=>waiting++);
+v.addEventListener("stalled",()=>stalled++);
+v.addEventListener("error",()=>mediaErrors++);
+
+await sodium.ready;
+lines.length=0;
+add("LIBSODIUM_READY=PASS");
+add("SYNTHETIC_ONLY=true");
+add("AEAD=XChaCha20-Poly1305-IETF");
+add("SEGMENT_SIZE_BYTES="+SEGMENT_SIZE); status.textContent="READY — tap Prepare encrypted segments";
+
+document.getElementById("prepare").onclick=async()=>{
+ status.textContent="PREPARE RUNNING…"; add("PREPARE_CLICK="+new Date().toISOString()); await new Promise(r=>setTimeout(r,50));
+ try{
+  const plain=b64bytes(FIXTURE_B64);
+  const key=new Uint8Array(32); for(let i=0;i<32;i++)key[i]=(i*29+5)&255;
+  const encrypted=[];
+  for(let off=0,index=0;off<plain.length;off+=SEGMENT_SIZE,index++){
+    const chunk=plain.slice(off,Math.min(off+SEGMENT_SIZE,plain.length));
+    const nonce=new Uint8Array(24); for(let j=0;j<24;j++)nonce[j]=(index*31+j*7+9)&255;
+    const aad=new TextEncoder().encode("PMV-P3|index="+index+"|offset="+off+"|length="+chunk.length+"|total="+plain.length);
+    const ct=sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(chunk,aad,null,nonce,key,"uint8array");
+    encrypted.push({ct,nonce,aad,len:chunk.length});
+    chunk.fill(0);
+  }
+  add("SEGMENT_COUNT="+encrypted.length);
+  add("SEGMENT_ENCRYPT=PASS");
+
+  const tampered=encrypted[0].ct.slice(); tampered[0]^=1;
+  let tamper=false;
+  try{sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(null,tampered,encrypted[0].aad,encrypted[0].nonce,key,"uint8array")}catch{tamper=true}
+  add("TAMPERED_SEGMENT_FAIL_CLOSED="+(tamper?"PASS":"FAIL"));
+
+  const parts=[];
+  for(let i=0;i<encrypted.length;i++){
+    const e=encrypted[i];
+    const p=sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(null,e.ct,e.aad,e.nonce,key,"uint8array");
+    parts.push(p);
+  }
+  const rebuilt=concat(parts);
+  add("SEGMENT_DECRYPT_ALL="+(rebuilt.length===plain.length?"PASS":"FAIL"));
+  for(const p of parts)p.fill(0);
+  key.fill(0); plain.fill(0); tampered.fill(0);
+
+  const blob=new Blob([rebuilt],{type:"video/mp4"});
+  add("VIDEO_BLOB_BYTES="+blob.size);
+  rebuilt.fill(0);
+  if(objectUrl)URL.revokeObjectURL(objectUrl);
+  objectUrl=URL.createObjectURL(blob);
+  v.src=objectUrl;
+  add("VIDEO_SRC_ASSIGNED=PASS");
+  status.textContent="Waiting for iPhone video metadata…";
+  await once(v,"loadedmetadata",15000);
+  add("VIDEO_DURATION_SECONDS="+v.duration.toFixed(1));
+  add("MEMORY_BLOB_VIDEO=PASS");
+  document.getElementById("seeks").disabled=false;
+  document.getElementById("play").disabled=false;
+  status.textContent="PREPARE PASS — run 3 seeks";
+ }catch(e){status.textContent="PREPARE FAIL — copy report";add("PREPARE=FAIL");add("ERROR="+String(e))}
+};
+
+document.getElementById("seeks").onclick=async()=>{
+ try{
+  let ok=0;
+  for(const t of [30,60,90]){
+    v.currentTime=t;
+    await once(v,"seeked");
+    const delta=Math.abs(v.currentTime-t);
+    add("SEEK_"+t+"S="+(delta<1.0?"PASS":"FAIL"));
+    if(delta<1.0)ok++;
+  }
+  add("SEEK_SUCCESS_COUNT="+ok+"/3");
+  v.currentTime=0; await once(v,"seeked");
+ }catch(e){add("SEEK_TEST=FAIL");add("ERROR="+String(e))}
+};
+
+document.getElementById("play").onclick=async()=>{
+ waiting=0;stalled=0;mediaErrors=0;
+ try{
+  v.currentTime=0;
+  add("PLAYBACK_BEGIN="+new Date().toISOString());
+  await v.play();
+  await once(v,"ended",130000);
+  add("PLAYBACK_ENDED=PASS");
+  add("WAITING_EVENT_COUNT="+waiting);
+  add("STALLED_EVENT_COUNT="+stalled);
+  add("MEDIA_ERROR_COUNT="+mediaErrors);
+  const durationOk=v.duration>=119 && v.duration<=121;
+  add("DURATION_120S="+(durationOk?"PASS":"FAIL"));
+  add("PERSISTENT_WRITE_BY_TEST_CODE=NONE");
+  add("P3_SYNTHETIC_VIDEO="+(durationOk&&stalled===0&&mediaErrors===0?"PASS":"FAIL"));
+ }catch(e){add("PLAYBACK=FAIL");add("ERROR="+String(e))}
+};
+
+document.getElementById("copy").onclick=async()=>{try{await navigator.clipboard.writeText(out.textContent);alert("Report copied.")}catch{alert("Copy failed. Select report manually.")}};
+window.addEventListener("error",e=>{ status.textContent="JAVASCRIPT ERROR — copy report"; add("WINDOW_ERROR="+e.message); });
+window.addEventListener("unhandledrejection",e=>{ status.textContent="PROMISE ERROR — copy report"; add("UNHANDLED_REJECTION="+String(e.reason)); });
+</script>
+</body></html>
