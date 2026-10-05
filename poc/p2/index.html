@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>PMV P2 Synthetic Photo Crypto Gate</title>
+  <style>
+    body { font-family:-apple-system,BlinkMacSystemFont,sans-serif; margin:24px; line-height:1.5; }
+    h1 { font-size:1.35rem; }
+    button { font:inherit; padding:12px 14px; margin:6px 6px 6px 0; }
+    pre { white-space:pre-wrap; word-break:break-word; background:#f5f5f5; padding:12px; }
+    .note { background:#fff8d8; padding:12px; }
+    img { max-width:240px; border:1px solid #ccc; display:block; margin:14px 0; }
+  </style>
+</head>
+<body>
+  <h1>PMV iPhone PWA — P2 Synthetic Photo Crypto Gate</h1>
+  <p class="note"><strong>PoC only.</strong> Synthetic fixture only. Do not enter a PMV password. No Google Drive, Production media, Production KEK, Media DEK, localStorage, IndexedDB, Cache Storage, Files, Photos, or Downloads are used. For this PoC only, libsodium-wrappers-sumo is loaded from jsDelivr; T1 Production code-delivery trust remains unresolved.</p>
+  <p>Algorithm: XChaCha20-Poly1305-IETF · 32-byte key · 24-byte nonce · synthetic AAD.</p>
+  <button id="run">Run P2 photo gate</button>
+  <button id="copy">Copy report</button>
+  <img id="preview" alt="Synthetic decrypted preview will appear here" hidden>
+  <pre id="report">Loading libsodium…</pre>
+<script type="module">
+import sodium from "https://cdn.jsdelivr.net/npm/libsodium-wrappers-sumo@0.8.4/+esm";
+
+const out = document.getElementById("report");
+const preview = document.getElementById("preview");
+const lines = [];
+const add = s => { lines.push(s); out.textContent = lines.join("\n"); };
+
+function eq(a,b) {
+  if (a.length !== b.length) return false;
+  let x = 0;
+  for (let i=0;i<a.length;i++) x |= a[i]^b[i];
+  return x === 0;
+}
+
+function b64ToBytes(s) {
+  const bin = atob(s);
+  const a = new Uint8Array(bin.length);
+  for (let i=0;i<bin.length;i++) a[i] = bin.charCodeAt(i);
+  return a;
+}
+
+await sodium.ready;
+lines.length = 0;
+add("LIBSODIUM_READY=PASS");
+add("XCHACHA20POLY1305_IETF_AVAILABLE=" + (typeof sodium.crypto_aead_xchacha20poly1305_ietf_encrypt === "function"));
+add("SECURE_CONTEXT=" + window.isSecureContext);
+add("SYNTHETIC_ONLY=true");
+
+document.getElementById("run").onclick = async () => {
+  const beforeLS = localStorage.length;
+  const key = new Uint8Array(32);
+  const nonce = new Uint8Array(24);
+  const aad = new TextEncoder().encode("PMV-P2-SYNTHETIC-PHOTO-AAD-v1");
+  for (let i=0;i<key.length;i++) key[i] = (i*13+7)&255;
+  for (let i=0;i<nonce.length;i++) nonce[i] = (i*19+3)&255;
+
+  // 1x1 PNG, synthetic fixture.
+  const plaintext = b64ToBytes("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nXcAAAAASUVORK5CYII=");
+
+  const ciphertext = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
+    plaintext, aad, null, nonce, key, "uint8array"
+  );
+
+  let success = 0;
+  for (let i=1;i<=3;i++) {
+    const dec = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+      null, ciphertext, aad, nonce, key, "uint8array"
+    );
+    const ok = eq(dec, plaintext);
+    add("DECRYPT_RUN" + i + "=" + (ok ? "PASS" : "FAIL"));
+    if (ok) success++;
+    dec.fill(0);
+  }
+  add("DECRYPT_SUCCESS_COUNT=" + success + "/3");
+
+  const wrongKey = key.slice();
+  wrongKey[0] ^= 0x80;
+  let wrongKeyFailClosed = false;
+  try {
+    sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+      null, ciphertext, aad, nonce, wrongKey, "uint8array"
+    );
+  } catch { wrongKeyFailClosed = true; }
+  add("WRONG_KEY_FAIL_CLOSED=" + (wrongKeyFailClosed ? "PASS" : "FAIL"));
+
+  const tampered = ciphertext.slice();
+  tampered[0] ^= 0x01;
+  let ciphertextTamperFailClosed = false;
+  try {
+    sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+      null, tampered, aad, nonce, key, "uint8array"
+    );
+  } catch { ciphertextTamperFailClosed = true; }
+  add("CIPHERTEXT_TAMPER_FAIL_CLOSED=" + (ciphertextTamperFailClosed ? "PASS" : "FAIL"));
+
+  const badAad = aad.slice();
+  badAad[0] ^= 0x01;
+  let aadTamperFailClosed = false;
+  try {
+    sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+      null, ciphertext, badAad, nonce, key, "uint8array"
+    );
+  } catch { aadTamperFailClosed = true; }
+  add("AAD_TAMPER_FAIL_CLOSED=" + (aadTamperFailClosed ? "PASS" : "FAIL"));
+
+  const displayBytes = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+    null, ciphertext, aad, nonce, key, "uint8array"
+  );
+  const blob = new Blob([displayBytes], {type:"image/png"});
+  const url = URL.createObjectURL(blob);
+  preview.onload = () => {
+    URL.revokeObjectURL(url);
+    displayBytes.fill(0);
+    add("MEMORY_BLOB_DISPLAY=PASS");
+    add("LOCALSTORAGE_UNCHANGED=" + (localStorage.length === beforeLS ? "PASS" : "FAIL"));
+    add("PERSISTENT_WRITE_BY_TEST_CODE=NONE");
+    add("RELOAD_REQUIRES_RERUN=true");
+    const overall =
+      success === 3 &&
+      wrongKeyFailClosed &&
+      ciphertextTamperFailClosed &&
+      aadTamperFailClosed &&
+      localStorage.length === beforeLS;
+    add("P2_SYNTHETIC_PHOTO_CRYPTO=" + (overall ? "PASS" : "FAIL"));
+  };
+  preview.onerror = () => add("MEMORY_BLOB_DISPLAY=FAIL");
+  preview.src = url;
+  preview.hidden = false;
+
+  key.fill(0); nonce.fill(0); wrongKey.fill(0); plaintext.fill(0); tampered.fill(0); badAad.fill(0);
+};
+
+document.getElementById("copy").onclick = async () => {
+  try {
+    await navigator.clipboard.writeText(out.textContent);
+    alert("Report copied.");
+  } catch {
+    alert("Copy failed. Select the report manually.");
+  }
+};
+</script>
+</body>
+</html>
