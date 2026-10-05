@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>PMV PWA Capability Probe</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 24px; line-height: 1.5; }
+    h1 { font-size: 1.4rem; }
+    table { border-collapse: collapse; width: 100%; font-size: .95rem; }
+    td, th { border-bottom: 1px solid #ddd; padding: 10px 4px; text-align: left; vertical-align: top; }
+    .pass { font-weight: 700; }
+    .warn { font-weight: 700; }
+    button { font: inherit; padding: 10px 14px; margin: 8px 8px 8px 0; }
+    pre { white-space: pre-wrap; word-break: break-word; background: #f5f5f5; padding: 12px; }
+  </style>
+</head>
+<body>
+  <h1>PMV iPhone PWA — P0 Capability Probe</h1>
+  <p>This page uses no PMV Production data, keys, passwords, Google tokens, or media.</p>
+  <table>
+    <thead><tr><th>Capability</th><th>Result</th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  <p>
+    <button id="persist">Request persistent storage</button>
+    <button id="copy">Copy report</button>
+  </p>
+  <pre id="report"></pre>
+<script>
+(async () => {
+  const results = {};
+  const add = (name, value) => { results[name] = value; };
+
+  add("timestamp", new Date().toISOString());
+  add("secureContext", window.isSecureContext);
+  add("WebAssembly", typeof WebAssembly === "object");
+  add("IndexedDB", typeof indexedDB !== "undefined");
+  add("WebCryptoSubtle", !!(crypto && crypto.subtle));
+  add("PublicKeyCredential", typeof PublicKeyCredential !== "undefined");
+  add("ManagedMediaSource", typeof ManagedMediaSource !== "undefined");
+  add("MediaSource", typeof MediaSource !== "undefined");
+  add("StorageEstimateAPI", !!(navigator.storage && navigator.storage.estimate));
+  add("StoragePersistAPI", !!(navigator.storage && navigator.storage.persist));
+  add("ServiceWorker", "serviceWorker" in navigator);
+  add("Standalone", window.matchMedia("(display-mode: standalone)").matches);
+  add("UserAgent", navigator.userAgent);
+
+  if (navigator.storage && navigator.storage.estimate) {
+    try {
+      const e = await navigator.storage.estimate();
+      add("StorageQuotaBytes", e.quota ?? null);
+      add("StorageUsageBytes", e.usage ?? null);
+    } catch (e) {
+      add("StorageEstimateError", String(e));
+    }
+  }
+
+  if (navigator.storage && navigator.storage.persisted) {
+    try { add("StorageAlreadyPersistent", await navigator.storage.persisted()); }
+    catch (e) { add("StoragePersistedError", String(e)); }
+  }
+
+  function render() {
+    const tbody = document.getElementById("rows");
+    tbody.innerHTML = "";
+    for (const [k,v] of Object.entries(results)) {
+      const tr = document.createElement("tr");
+      const td1 = document.createElement("td");
+      const td2 = document.createElement("td");
+      td1.textContent = k;
+      td2.textContent = String(v);
+      if (v === true) td2.className = "pass";
+      if (v === false) td2.className = "warn";
+      tr.append(td1, td2);
+      tbody.appendChild(tr);
+    }
+    document.getElementById("report").textContent =
+      Object.entries(results).map(([k,v]) => k + "=" + String(v)).join("\n");
+  }
+
+  document.getElementById("persist").onclick = async () => {
+    if (!(navigator.storage && navigator.storage.persist)) {
+      add("StoragePersistRequest", "UNSUPPORTED");
+    } else {
+      try { add("StoragePersistRequest", await navigator.storage.persist()); }
+      catch (e) { add("StoragePersistRequest", "ERROR: " + String(e)); }
+    }
+    render();
+  };
+
+  document.getElementById("copy").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById("report").textContent);
+      alert("Report copied.");
+    } catch (e) {
+      alert("Copy failed. Select the report text manually.");
+    }
+  };
+
+  render();
+})();
+</script>
+</body>
+</html>
