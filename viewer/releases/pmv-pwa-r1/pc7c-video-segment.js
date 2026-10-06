@@ -917,6 +917,44 @@ button.onclick = async () => {
 
       add("VIDEO_CONTAINER_CODEC_TAGS=" + (tags.length ? tags.join(",") : "NONE"));
 
+      function findAscii(bytes, text) {
+        const target = Array.from(text, ch => ch.charCodeAt(0));
+        outer:
+        for (let i = 0; i <= bytes.length - target.length; i++) {
+          for (let j = 0; j < target.length; j++) {
+            if (bytes[i + j] !== target[j]) continue outer;
+          }
+          return i;
+        }
+        return -1;
+      }
+
+      const avcCIndex = findAscii(probe, "avcC");
+
+      if (avcCIndex >= 0 && avcCIndex + 8 <= probe.length) {
+        const profile = probe[avcCIndex + 5];
+        const compat = probe[avcCIndex + 6];
+        const level = probe[avcCIndex + 7];
+
+        const codec =
+          "avc1." +
+          [profile, compat, level]
+            .map(v => v.toString(16).padStart(2, "0"))
+            .join("")
+            .toUpperCase();
+
+        add("VIDEO_AVC_CODEC=" + codec);
+        add("VIDEO_AVC_PROFILE_IDC=" + profile);
+        add("VIDEO_AVC_LEVEL_IDC=" + level);
+        add(
+          "VIDEO_CANPLAYTYPE_EXACT=" +
+          videoEl.canPlayType('video/mp4; codecs="' + codec + ', mp4a.40.2"')
+        );
+      }
+      else {
+        add("VIDEO_AVC_CODEC=NOT_FOUND_IN_PROBE");
+      }
+
       let mime = "application/octet-stream";
 
       if (
