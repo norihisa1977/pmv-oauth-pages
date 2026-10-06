@@ -358,6 +358,17 @@ async function driveRange(
       await response.arrayBuffer()
     );
 
+  const expectedLength =
+    end - start + 1;
+
+  if (bytes.length !== expectedLength) {
+    throw new Error(
+      "VIDEO_RANGE_RESPONSE_LENGTH_MISMATCH"
+    );
+  }
+
+  add("VIDEO_RANGE_RESPONSE_LENGTH_MATCH=PASS");
+
   return bytes;
 }
 
