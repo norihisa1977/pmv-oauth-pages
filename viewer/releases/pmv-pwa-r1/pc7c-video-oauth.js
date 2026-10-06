@@ -15,6 +15,38 @@ function report(lines) {
     lines.join("\n");
 }
 
+async function retireLegacyVideoServiceWorker() {
+  if (!("serviceWorker" in navigator)) {
+    return;
+  }
+
+  const registrations =
+    await navigator.serviceWorker.getRegistrations();
+
+  let retired = 0;
+
+  for (const registration of registrations) {
+    const scriptUrl =
+      registration.active?.scriptURL ||
+      registration.waiting?.scriptURL ||
+      registration.installing?.scriptURL ||
+      "";
+
+    if (scriptUrl.includes("/pc7c-video-sw.js")) {
+      if (await registration.unregister()) {
+        retired++;
+      }
+    }
+  }
+
+  if (retired > 0) {
+    report([
+      "PC7C_VIDEO_OAUTH_CONTEXT=PASS",
+      "LEGACY_VIDEO_SW_RETIRED=" + retired
+    ]);
+  }
+}
+
 async function waitForGIS() {
   for (let i = 0; i < 100; i++) {
     if (window.google?.accounts?.oauth2) return;
@@ -30,6 +62,9 @@ button.onclick = async () => {
     out.push("PC7C_VIDEO_OAUTH_CONTEXT=PASS");
     out.push("PMV_PASSWORD_FIELD_PRESENT=false");
     out.push("KEY_CONTEXT_ACTIVE=false");
+
+    await retireLegacyVideoServiceWorker();
+    out.push("LEGACY_VIDEO_SW_SCOPE_CLEAR=PASS");
 
     await waitForGIS();
     out.push("GIS_READY=PASS");
