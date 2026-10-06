@@ -929,30 +929,75 @@ button.onclick = async () => {
         return -1;
       }
 
-      const avcCIndex = findAscii(probe, "avcC");
+      function findAsciiAcrossParts(parts, text) {
+        const target = Array.from(text, ch => ch.charCodeAt(0));
+        let globalOffset = 0;
 
-      if (avcCIndex >= 0 && avcCIndex + 8 <= probe.length) {
-        const profile = probe[avcCIndex + 5];
-        const compat = probe[avcCIndex + 6];
-        const level = probe[avcCIndex + 7];
+        for (let pIndex = 0; pIndex < parts.length; pIndex++) {
+          const part = parts[pIndex];
 
-        const codec =
-          "avc1." +
-          [profile, compat, level]
-            .map(v => v.toString(16).padStart(2, "0"))
-            .join("")
-            .toUpperCase();
+          outer:
+          for (let i = 0; i <= part.length - target.length; i++) {
+            for (let j = 0; j < target.length; j++) {
+              if (part[i + j] !== target[j]) continue outer;
+            }
 
-        add("VIDEO_AVC_CODEC=" + codec);
-        add("VIDEO_AVC_PROFILE_IDC=" + profile);
-        add("VIDEO_AVC_LEVEL_IDC=" + level);
+            return {
+              partIndex: pIndex,
+              localOffset: i,
+              globalOffset: globalOffset + i
+            };
+          }
+
+          globalOffset += part.length;
+        }
+
+        return null;
+      }
+
+      const topLevelTags = ["ftyp","moov","mdat","free","wide","uuid"];
+      for (const tag of topLevelTags) {
+        const hit = findAsciiAcrossParts(playbackParts, tag);
         add(
-          "VIDEO_CANPLAYTYPE_EXACT=" +
-          videoEl.canPlayType('video/mp4; codecs="' + codec + ', mp4a.40.2"')
+          "VIDEO_BOX_" + tag.toUpperCase() + "_OFFSET=" +
+          (hit ? hit.globalOffset : "NOT_FOUND")
         );
       }
+
+      const avcCHit =
+        findAsciiAcrossParts(playbackParts, "avcC");
+
+      if (avcCHit) {
+        const part = playbackParts[avcCHit.partIndex];
+        const i = avcCHit.localOffset;
+
+        if (i + 8 <= part.length) {
+          const profile = part[i + 5];
+          const compat = part[i + 6];
+          const level = part[i + 7];
+
+          const codec =
+            "avc1." +
+            [profile, compat, level]
+              .map(v => v.toString(16).padStart(2, "0"))
+              .join("")
+              .toUpperCase();
+
+          add("VIDEO_AVCC_OFFSET=" + avcCHit.globalOffset);
+          add("VIDEO_AVC_CODEC=" + codec);
+          add("VIDEO_AVC_PROFILE_IDC=" + profile);
+          add("VIDEO_AVC_LEVEL_IDC=" + level);
+          add(
+            "VIDEO_CANPLAYTYPE_EXACT=" +
+            videoEl.canPlayType('video/mp4; codecs="' + codec + ', mp4a.40.2"')
+          );
+        }
+        else {
+          add("VIDEO_AVC_CODEC=CROSSES_SEGMENT_BOUNDARY");
+        }
+      }
       else {
-        add("VIDEO_AVC_CODEC=NOT_FOUND_IN_PROBE");
+        add("VIDEO_AVC_CODEC=NOT_FOUND");
       }
 
       let mime = "application/octet-stream";
