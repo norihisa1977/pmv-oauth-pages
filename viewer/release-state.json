@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "active_release": null,
+  "production_viewer_enabled": false,
+  "promotion_required": true,
+  "poc_path": "/poc/",
+  "release_root": "/viewer/releases/",
+  "last_updated": "2026-10-06"
+}
