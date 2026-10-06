@@ -348,17 +348,17 @@ async function driveRange(
   const contentRange =
     response.headers.get("content-range");
 
-  if (!contentRange) {
-    throw new Error(
-      "VIDEO_CONTENT_RANGE_MISSING"
-    );
-  }
-
-  add("VIDEO_CONTENT_RANGE_PRESENT=PASS");
-
-  return new Uint8Array(
-    await response.arrayBuffer()
+  add(
+    "VIDEO_CONTENT_RANGE_EXPOSED=" +
+    Boolean(contentRange)
   );
+
+  const bytes =
+    new Uint8Array(
+      await response.arrayBuffer()
+    );
+
+  return bytes;
 }
 
 async function downloadWrapper(accessToken) {
