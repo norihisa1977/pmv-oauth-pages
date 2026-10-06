@@ -638,83 +638,125 @@ button.onclick = async () => {
 
     add("MEDIA_DEK_UNWRAP=PASS");
 
-    const manifestBytes =
+    const manifestEnvelope =
       await driveDownload(
         accessToken,
         MANIFEST_FILE_ID,
         "PRODUCTION_VIDEO_MANIFEST_DOWNLOAD"
       );
 
-    const manifest =
-      JSON.parse(
-        decoder.decode(manifestBytes)
-      );
-
     add("PRODUCTION_VIDEO_MANIFEST_DOWNLOAD=PASS");
 
-    validateManifest(manifest);
-
-    const seg =
-      manifest.segments[0];
-
-    const start =
-      seg.offset;
-
-    const end =
-      seg.offset +
-      seg.ciphertext_length -
-      1;
-
-    add("VIDEO_SEGMENT_INDEX=0");
-    add("VIDEO_RANGE_START=" + start);
-    add("VIDEO_RANGE_END=" + end);
-
-    const segmentCiphertext =
-      await driveRange(
-        accessToken,
-        VIDEO_FILE_ID,
-        start,
-        end
-      );
-
-    if (
-      segmentCiphertext.length !==
-      seg.ciphertext_length
-    ) {
-      throw new Error("VIDEO_RANGE_LENGTH_MISMATCH");
+    if (manifestEnvelope.length < 40) {
+      throw new Error("VIDEO_MANIFEST_ENVELOPE_INVALID");
     }
 
-    add("VIDEO_RANGE_LENGTH_MATCH=PASS");
+    const manifestNonce =
+      manifestEnvelope.slice(0, 24);
 
-    const segmentAad =
-      "vault_id=" + manifest.vault_id + "\n" +
-      "media_id=" + manifest.media_id + "\n" +
-      "format_version=" + manifest.format_version + "\n" +
-      "segment_index=" + seg.segment_index + "\n" +
-      "segment_count=" + manifest.segment_count + "\n" +
-      "plaintext_length=" + seg.plaintext_length + "\n";
+    const manifestCiphertext =
+      manifestEnvelope.slice(24);
 
-    segmentPlaintext =
-      sodium
-        .crypto_aead_xchacha20poly1305_ietf_decrypt(
-          null,
-          segmentCiphertext,
-          encoder.encode(segmentAad),
-          hexToBytes(seg.nonce_hex),
-          mediaDek
+    const manifestAad =
+      "pmv:v1:manifest\n" +
+      "vault_id=" + record.vault_id + "\n" +
+      "media_id=" + record.media_id + "\n";
+
+    let manifestPlaintext = null;
+
+    try {
+      manifestPlaintext =
+        sodium
+          .crypto_aead_xchacha20poly1305_ietf_decrypt(
+            null,
+            manifestCiphertext,
+            encoder.encode(manifestAad),
+            manifestNonce,
+            mediaDek
+          );
+
+      add("PRODUCTION_VIDEO_MANIFEST_AEAD_AUTH=PASS");
+
+      const manifest =
+        JSON.parse(
+          decoder.decode(manifestPlaintext)
         );
 
-    if (
-      segmentPlaintext.length !==
-      seg.plaintext_length
-    ) {
-      throw new Error("VIDEO_SEGMENT_PLAINTEXT_LENGTH_MISMATCH");
+      add("PRODUCTION_VIDEO_MANIFEST_JSON=PASS");
+
+      validateManifest(manifest);
+
+      const seg =
+        manifest.segments[0];
+
+      const start =
+        seg.offset;
+
+      const end =
+        seg.offset +
+        seg.ciphertext_length -
+        1;
+
+      add("VIDEO_SEGMENT_INDEX=0");
+      add("VIDEO_RANGE_START=" + start);
+      add("VIDEO_RANGE_END=" + end);
+
+      const segmentCiphertext =
+        await driveRange(
+          accessToken,
+          VIDEO_FILE_ID,
+          start,
+          end
+        );
+
+      if (
+        segmentCiphertext.length !==
+        seg.ciphertext_length
+      ) {
+        throw new Error("VIDEO_RANGE_LENGTH_MISMATCH");
+      }
+
+      add("VIDEO_RANGE_LENGTH_MATCH=PASS");
+
+      const segmentAad =
+        "vault_id=" + manifest.vault_id + "\n" +
+        "media_id=" + manifest.media_id + "\n" +
+        "format_version=" + manifest.format_version + "\n" +
+        "segment_index=" + seg.segment_index + "\n" +
+        "segment_count=" + manifest.segment_count + "\n" +
+        "plaintext_length=" + seg.plaintext_length + "\n";
+
+      segmentPlaintext =
+        sodium
+          .crypto_aead_xchacha20poly1305_ietf_decrypt(
+            null,
+            segmentCiphertext,
+            encoder.encode(segmentAad),
+            hexToBytes(seg.nonce_hex),
+            mediaDek
+          );
+
+      if (
+        segmentPlaintext.length !==
+        seg.plaintext_length
+      ) {
+        throw new Error("VIDEO_SEGMENT_PLAINTEXT_LENGTH_MISMATCH");
+      }
+
+      add("VIDEO_SEGMENT_AEAD_DECRYPT=PASS");
+      add("VIDEO_SEGMENT_PLAINTEXT_LENGTH_MATCH=PASS");
+      add("VIDEO_PLAINTEXT_FILE_CREATED=NO");
+      add("PC7C_VIDEO_SEGMENT_RESULT=PASS");
+    }
+    finally {
+      if (
+        manifestPlaintext instanceof Uint8Array
+      ) {
+        sodium.memzero(manifestPlaintext);
+        add("VIDEO_MANIFEST_PLAINTEXT_ZEROIZED=PASS");
+      }
     }
 
-    add("VIDEO_SEGMENT_AEAD_DECRYPT=PASS");
-    add("VIDEO_SEGMENT_PLAINTEXT_LENGTH_MATCH=PASS");
-    add("VIDEO_PLAINTEXT_FILE_CREATED=NO");
-    add("PC7C_VIDEO_SEGMENT_RESULT=PASS");
   }
   catch (e) {
     add("PC7C_VIDEO_SEGMENT_RESULT=FAIL");
