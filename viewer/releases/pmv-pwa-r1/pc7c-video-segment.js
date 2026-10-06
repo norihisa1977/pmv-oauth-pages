@@ -1306,6 +1306,7 @@ button.onclick = async () => {
       let blobParts = playbackParts;
       let fastStartApplied = false;
       let transientMoov = null;
+      let removedPrefixBytes = 0;
 
       if (
         mdatTypeOffsetHit &&
@@ -1344,7 +1345,7 @@ button.onclick = async () => {
         const prefixEnd =
           uuidBox ? uuidBox.offset : originalMdat.offset;
 
-        const removedPrefixBytes =
+        removedPrefixBytes =
           uuidBox ? uuidBox.size : 0;
 
         const chunkOffsetDelta =
@@ -1401,11 +1402,7 @@ button.onclick = async () => {
 
       const expectedBlobSize =
         manifest.total_plaintext_length -
-        (
-          typeof removedPrefixBytes === "number"
-            ? removedPrefixBytes
-            : 0
-        );
+        removedPrefixBytes;
 
       if (blob.size !== expectedBlobSize) {
         throw new Error("VIDEO_BLOB_LENGTH_MISMATCH");
