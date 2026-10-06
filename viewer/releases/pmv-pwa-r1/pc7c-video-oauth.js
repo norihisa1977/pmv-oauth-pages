@@ -65,7 +65,7 @@ button.onclick = async () => {
             report(out);
 
             location.replace(
-              "./pc7c-video-segment.html?v=pc7c-uuid-strip-v2"
+              "./pc7c-video-segment.html?v=pc7c-sw-range-v1"
             );
           }
           catch (e) {
