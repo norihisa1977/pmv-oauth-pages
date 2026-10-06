@@ -16,9 +16,7 @@ pre{white-space:pre-wrap;word-break:break-word;background:#f5f5f5;padding:12px}
 <body>
 <h1>PMV PC-7C Production Video Segment</h1>
 <p class="note">
-This test reads the existing Production video manifest, performs one HTTP Range GET for segment 0,
-decrypts that segment in memory only, verifies its length, then zeroizes all mutable secret/plaintext buffers.
-It does not create a plaintext video file.
+This test reads the existing Production video, decrypts it in memory, exposes the transient bytes through a same-origin Service Worker Range source, and plays it without creating a plaintext video file.
 </p>
 
 <label>
@@ -31,6 +29,6 @@ PMV Password
 <button id="run">Decrypt and Prepare Video</button>\n<button id="clear" disabled>Clear Video</button>\n<video id="video" controls playsinline preload="metadata" style="width:100%;max-height:55vh;background:#000;margin-top:16px"></video>
 <pre id="report">READY</pre>
 
-<script type="module" src="./pc7c-video-segment.js?v=pc7c-uuid-strip-v2"></script>
+<script type="module" src="./pc7c-video-segment.js?v=pc7c-sw-range-v1"></script>
 </body>
 </html>
