@@ -48,15 +48,22 @@ btn.onclick = async () => {
           sessionStorage.setItem("pmv_r1_oauth_handoff", JSON.stringify({
             v:1,
             token:accessToken,
-            created_at:Date.now()
+            created_at:Date.now(),
+            oauth_context:"PASS",
+            drive_about_get:about.ok?"PASS":"FAIL",
+            refresh_token_field_present:Object.prototype.hasOwnProperty.call(resp,"refresh_token")
           }));
+
           out.push("SAME_ORIGIN_HANDOFF_STAGED=PASS");
           out.push("HANDOFF_STORAGE=sessionStorage");
           out.push("HANDOFF_CONTAINS_PMV_PASSWORD=false");
           out.push("HANDOFF_CONTAINS_KEK_DEK=false");
+          out.push("SAME_TAB_NAVIGATION=BEGIN");
           out.push("PRODUCTION_MEDIA_ACCESS=NONE");
           out.push("PRODUCTION_SECRETS_ACCESS=NONE");
           report(out);
+
+          location.replace("./key-context.html");
         }catch(e){
           out.push("OAUTH_BOOTSTRAP=FAIL");
           out.push("ERROR="+String(e?.message||e));
