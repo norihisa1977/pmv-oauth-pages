@@ -65,7 +65,7 @@ button.onclick = async () => {
             report(out);
 
             location.replace(
-              "./pc7c-video-segment.html?v=pc7c-fullscan-v1"
+              "./pc7c-video-segment.html?v=pc7c-buffer-hold-v1"
             );
           }
           catch (e) {
