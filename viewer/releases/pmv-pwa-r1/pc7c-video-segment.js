@@ -588,89 +588,56 @@ clearButton.onclick = () => {
   clearVideo();
 };
 
-async function ensureVideoServiceWorker() {
-  if (!("serviceWorker" in navigator)) {
-    throw new Error("VIDEO_SW_UNAVAILABLE");
-  }
+let playbackReadyPromise = null;
 
-  const registration =
-    await navigator.serviceWorker.register(
-      "./pc7c-video-sw.js?v=pc7c-sw-range-v1",
-      {scope: "./"}
+function ensurePlaybackFrame() {
+  if (playbackReadyPromise) return playbackReadyPromise;
+
+  playbackReadyPromise = new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("VIDEO_PLAYBACK_FRAME_TIMEOUT")),
+      10000
     );
 
-  serviceWorkerRegistration = registration;
+    function onMessage(event) {
+      if (
+        event.origin !== location.origin ||
+        event.source !== playbackFrame.contentWindow ||
+        event.data?.source !== "PMV_PC7C_PLAYBACK"
+      ) return;
 
-  await navigator.serviceWorker.ready;
+      const data = event.data;
 
-  if (!navigator.serviceWorker.controller) {
-    add("VIDEO_SW_CONTROLLER=WAIT");
-
-    await new Promise((resolve, reject) => {
-      const timer =
-        setTimeout(() => {
-          navigator.serviceWorker.removeEventListener(
-            "controllerchange",
-            onControllerChange
-          );
-          reject(
-            new Error("VIDEO_SW_CONTROLLER_TIMEOUT")
-          );
-        }, 5000);
-
-      function onControllerChange() {
-        if (!navigator.serviceWorker.controller) {
-          return;
-        }
-
+      if (data.type === "READY") {
         clearTimeout(timer);
-        navigator.serviceWorker.removeEventListener(
-          "controllerchange",
-          onControllerChange
-        );
+        add("VIDEO_SW_CONTROLLER=PASS");
+        add("VIDEO_SW_READY=PASS");
         resolve();
+      } else if (data.type === "LOADEDMETADATA") {
+        add("VIDEO_LOADEDMETADATA=PASS");
+        add("VIDEO_DURATION_SECONDS=" + data.duration);
+      } else if (data.type === "CANPLAY") {
+        add("VIDEO_CANPLAY=PASS");
+      } else if (data.type === "PLAYING") {
+        add("VIDEO_PLAY_EVENT=PASS");
+      } else if (data.type === "SEEKED") {
+        add("VIDEO_SEEK_EVENT=PASS");
+        add("VIDEO_CURRENT_TIME=" + data.currentTime);
+      } else if (data.type === "VIDEO_ERROR") {
+        add("VIDEO_ELEMENT_ERROR=FAIL");
+        add("VIDEO_ELEMENT_ERROR_CODE=" + data.code);
+      } else if (data.type === "ERROR") {
+        add("VIDEO_PLAYBACK_FRAME_ERROR=" + data.message);
       }
+    }
 
-      navigator.serviceWorker.addEventListener(
-        "controllerchange",
-        onControllerChange
-      );
+    window.addEventListener("message", onMessage);
+    playbackFrame.src =
+      "./pc7c-video-playback/index.html?v=pc7c-sw-scope-v2";
+  });
 
-      onControllerChange();
-    });
-  }
-
-  if (!navigator.serviceWorker.controller) {
-    throw new Error("VIDEO_SW_CONTROLLER_MISSING");
-  }
-
-  serviceWorkerReady = true;
-  add("VIDEO_SW_CONTROLLER=PASS");
-  add("VIDEO_SW_READY=PASS");
+  return playbackReadyPromise;
 }
-
-videoEl.addEventListener("loadedmetadata", () => {
-  add("VIDEO_LOADEDMETADATA=PASS");
-  add("VIDEO_DURATION_SECONDS=" + videoEl.duration);
-});
-
-videoEl.addEventListener("canplay", () => {
-  add("VIDEO_CANPLAY=PASS");
-});
-
-videoEl.addEventListener("playing", () => {
-  add("VIDEO_PLAY_EVENT=PASS");
-});
-
-videoEl.addEventListener("seeked", () => {
-  add("VIDEO_SEEK_EVENT=PASS");
-  add("VIDEO_CURRENT_TIME=" + videoEl.currentTime);
-});
-
-videoEl.addEventListener("error", () => {
-  add("VIDEO_ELEMENT_ERROR=FAIL");
-  add("VIDEO_ELEMENT_ERROR_CODE=" + (videoEl.error?.code ?? "UNKNOWN"));
-});
 
 button.onclick = async () => {
   button.disabled = true;
@@ -1492,66 +1459,43 @@ button.onclick = async () => {
       add("VIDEO_MIME=" + mime);
 
       await clearVideo();
-      await ensureVideoServiceWorker();
-
-      const sw =
-        navigator.serviceWorker.controller;
-
-      if (!sw) {
-        throw new Error("VIDEO_SW_CONTROLLER_MISSING");
-      }
+      await ensurePlaybackFrame();
 
       const swReadyPromise =
         new Promise((resolve, reject) => {
-          const timer =
-            setTimeout(
-              () => {
-                navigator.serviceWorker.removeEventListener(
-                  "message",
-                  onMessage
-                );
-                reject(
-                  new Error("VIDEO_SW_SET_TIMEOUT")
-                );
-              },
-              5000
-            );
+          const timer = setTimeout(
+            () => reject(new Error("VIDEO_SW_SET_TIMEOUT")),
+            5000
+          );
 
           function onMessage(event) {
             if (
-              event.data?.type ===
-              "PMV_VIDEO_SET_RESULT"
-            ) {
-              clearTimeout(timer);
-              navigator.serviceWorker.removeEventListener(
-                "message",
-                onMessage
-              );
+              event.origin !== location.origin ||
+              event.source !== playbackFrame.contentWindow ||
+              event.data?.source !== "PMV_PC7C_PLAYBACK" ||
+              event.data?.type !== "SET_RESULT"
+            ) return;
 
-              if (!event.data.ok) {
-                reject(
-                  new Error("VIDEO_SW_SET_FAILED")
-                );
-                return;
-              }
+            clearTimeout(timer);
+            window.removeEventListener("message", onMessage);
 
-              resolve(event.data);
+            if (!event.data.ok) {
+              reject(new Error("VIDEO_SW_SET_FAILED"));
+              return;
             }
+            resolve(event.data);
           }
-
-          navigator.serviceWorker.addEventListener(
-            "message",
-            onMessage
-          );
+          window.addEventListener("message", onMessage);
         });
 
-      sw.postMessage(
+      playbackFrame.contentWindow.postMessage(
         {
           type: "PMV_VIDEO_SET",
           parts: transferParts,
           totalLength: transferTotal,
           mime
         },
+        location.origin,
         transferParts
       );
 
@@ -1573,11 +1517,10 @@ button.onclick = async () => {
           ? [...playbackParts, transientMoov]
           : playbackParts;
 
-      videoEl.src =
-        "./pc7c-video-virtual.mp4?v=" +
-        Date.now();
-
-      videoEl.load();
+      playbackFrame.contentWindow.postMessage(
+        {type: "PMV_VIDEO_PLAY"},
+        location.origin
+      );
 
       clearButton.disabled = false;
 
