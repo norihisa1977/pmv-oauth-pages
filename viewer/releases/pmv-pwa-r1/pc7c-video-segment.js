@@ -40,6 +40,8 @@ const clearButton =
   document.getElementById("clear");
 
 let currentObjectUrl = null;
+let currentPlaybackParts = null;
+let activeSodium = null;
 
 const lines = [];
 const encoder = new TextEncoder();
@@ -549,6 +551,20 @@ function clearVideo() {
       add("VIDEO_OBJECT_URL_RELEASED=PASS");
     }
 
+    if (
+      activeSodium &&
+      Array.isArray(currentPlaybackParts)
+    ) {
+      for (const part of currentPlaybackParts) {
+        if (part instanceof Uint8Array) {
+          activeSodium.memzero(part);
+        }
+      }
+
+      currentPlaybackParts = null;
+      add("VIDEO_SOURCE_BUFFERS_ZEROIZED=PASS");
+    }
+
     clearButton.disabled = true;
   }
   catch (e) {
@@ -631,6 +647,8 @@ button.onclick = async () => {
 
     sodium =
       await loadVerifiedSodium();
+
+    activeSodium = sodium;
 
     wrappingKey =
       sodium.crypto_pwhash(
@@ -1038,6 +1056,9 @@ button.onclick = async () => {
       currentObjectUrl =
         URL.createObjectURL(blob);
 
+      currentPlaybackParts =
+        playbackParts;
+
       videoEl.src =
         currentObjectUrl;
 
@@ -1046,17 +1067,11 @@ button.onclick = async () => {
       add("VIDEO_OBJECT_URL_ACTIVE=YES");
       add("VIDEO_PLAINTEXT_FILE_CREATED=NO");
       add("VIDEO_PLAINTEXT_PERSISTED=NO");
+      add("VIDEO_SOURCE_BUFFERS_HELD_UNTIL_CLEAR=YES");
       add("PC7C_VIDEO_SEGMENT_RESULT=PASS");
       add("PC7C_VIDEO_PLAYBACK_PREP=PASS");
 
-      for (const part of playbackParts) {
-        if (part instanceof Uint8Array) {
-          sodium.memzero(part);
-        }
-      }
-
       segmentPlaintext = null;
-      add("VIDEO_SOURCE_BUFFERS_ZEROIZED=PASS");
     }
     finally {
       if (
