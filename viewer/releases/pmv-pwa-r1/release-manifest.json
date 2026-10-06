@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "release_id": "pmv-pwa-r1",
+  "status": "CANDIDATE_NOT_ACTIVE",
+  "immutable_after_approval": true,
+  "executable_policy": {
+    "third_party_script_origins": [],
+    "runtime_crypto_origin": "same-origin",
+    "unexpected_hash_action": "fail-closed"
+  },
+  "assets": {
+    "vendor/libsodium-0.8.4/libsodium-wrappers.mjs": {
+      "sha256": "d996f24dc79373c488309c06b5b0787921357369ee162455b6b17e6fc82d1c11",
+      "executable": true
+    },
+    "vendor/libsodium-0.8.4/libsodium-sumo.mjs": {
+      "sha256": "629719980ba5b49d38432608f95bb270fae599f7dc72bc82f623815aadb4b8c3",
+      "executable": true
+    }
+  }
+}
