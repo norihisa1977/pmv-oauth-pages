@@ -1,0 +1,4 @@
+PMV P3 MMS GitHub Pages redeploy trigger.
+Created: 2026-10-06
+Purpose: retrigger a fresh Pages deployment after the prior run became stuck.
+No Production PMV data or secrets are involved.
