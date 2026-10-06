@@ -32,12 +32,17 @@ document.getElementById('prepare').onclick=async()=>{
   add('TAMPERED_PART_FAIL_CLOSED='+(fc?'PASS':'FAIL'));bad.fill(0);
   mms=new ManagedMediaSource();
   url=URL.createObjectURL(mms);v.src=url;
+  const metadataPromise = v.readyState >= 1 ? Promise.resolve() : wait(v,'loadedmetadata',30000);
   await wait(mms,'sourceopen');
   add('MMS_SOURCEOPEN=PASS');
   const sb=mms.addSourceBuffer(mime);add('SOURCEBUFFER_CREATED=PASS');
   for(let i=0;i<enc.length;i++){const p=sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(null,enc[i].ct,enc[i].aad,enc[i].nonce,key,'uint8array');await append(sb,p);p.fill(0);add('APPEND_PART_'+i+'=PASS')}
   key.fill(0);mms.endOfStream();add('MMS_END_OF_STREAM=PASS');
-  await wait(v,'loadedmetadata');add('VIDEO_DURATION_SECONDS='+v.duration.toFixed(1));
+  add('VIDEO_READY_STATE_AFTER_APPEND='+v.readyState);
+  if (v.readyState < 1) await metadataPromise;
+  add('LOADEDMETADATA_OBSERVED=PASS');
+  add('VIDEO_READY_STATE='+v.readyState);
+  add('VIDEO_DURATION_SECONDS='+v.duration.toFixed(1));
   document.getElementById('seek').disabled=false;document.getElementById('play').disabled=false;status.innerHTML='<strong>PREPARE PASS — run 3 seeks</strong>';
  }catch(e){status.innerHTML='<strong>PREPARE FAIL — copy report</strong>';add('PREPARE=FAIL');add('ERROR='+String(e))}
 };
