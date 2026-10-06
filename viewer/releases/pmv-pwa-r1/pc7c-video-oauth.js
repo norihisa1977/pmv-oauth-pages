@@ -10,13 +10,22 @@ const reportEl =
 const button =
   document.getElementById("authorize");
 
-function report(lines) {
+let tokenClient = null;
+const out = [];
+
+function report() {
   reportEl.textContent =
-    lines.join("\n");
+    out.join("\n");
+}
+
+function add(line) {
+  out.push(line);
+  report();
 }
 
 async function retireLegacyVideoServiceWorker() {
   if (!("serviceWorker" in navigator)) {
+    add("LEGACY_VIDEO_SW_SCOPE_CLEAR=PASS");
     return;
   }
 
@@ -40,11 +49,10 @@ async function retireLegacyVideoServiceWorker() {
   }
 
   if (retired > 0) {
-    report([
-      "PC7C_VIDEO_OAUTH_CONTEXT=PASS",
-      "LEGACY_VIDEO_SW_RETIRED=" + retired
-    ]);
+    add("LEGACY_VIDEO_SW_RETIRED=" + retired);
   }
+
+  add("LEGACY_VIDEO_SW_SCOPE_CLEAR=PASS");
 }
 
 async function waitForGIS() {
@@ -55,21 +63,21 @@ async function waitForGIS() {
   throw new Error("GIS_LOAD_TIMEOUT");
 }
 
-button.onclick = async () => {
-  const out = [];
+async function initialize() {
+  button.disabled = true;
+  out.length = 0;
 
   try {
-    out.push("PC7C_VIDEO_OAUTH_CONTEXT=PASS");
-    out.push("PMV_PASSWORD_FIELD_PRESENT=false");
-    out.push("KEY_CONTEXT_ACTIVE=false");
+    add("PC7C_VIDEO_OAUTH_CONTEXT=PASS");
+    add("PMV_PASSWORD_FIELD_PRESENT=false");
+    add("KEY_CONTEXT_ACTIVE=false");
 
     await retireLegacyVideoServiceWorker();
-    out.push("LEGACY_VIDEO_SW_SCOPE_CLEAR=PASS");
-
     await waitForGIS();
-    out.push("GIS_READY=PASS");
 
-    const client =
+    add("GIS_READY=PASS");
+
+    tokenClient =
       google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPE,
@@ -93,34 +101,47 @@ button.onclick = async () => {
               })
             );
 
-            out.push("ACCESS_TOKEN_RECEIVED=PASS");
-            out.push("ACCESS_TOKEN_PERSISTED_BY_TEST_CODE=NO");
-            out.push("SAME_ORIGIN_HANDOFF_STAGED=PASS");
-
-            report(out);
+            add("ACCESS_TOKEN_RECEIVED=PASS");
+            add("ACCESS_TOKEN_PERSISTED_BY_TEST_CODE=NO");
+            add("SAME_ORIGIN_HANDOFF_STAGED=PASS");
 
             location.replace(
-              "./pc7c-video-segment.html?v=pc7c-sw-range-v1"
+              "./pc7c-video-segment.html?v=pc7c-sw-scope-v2"
             );
           }
           catch (e) {
-            out.push("PC7C_VIDEO_OAUTH=FAIL");
-            out.push("ERROR=" + String(e?.message || e));
-            report(out);
+            add("PC7C_VIDEO_OAUTH=FAIL");
+            add("ERROR=" + String(e?.message || e));
           }
         }
       });
 
-    out.push("GIS_TOKEN_CLIENT_INIT=PASS");
-    report(out);
+    add("GIS_TOKEN_CLIENT_INIT=PASS");
+    add("OAUTH_BUTTON_READY=PASS");
+    button.disabled = false;
+  }
+  catch (e) {
+    add("PC7C_VIDEO_OAUTH=FAIL");
+    add("ERROR=" + String(e?.message || e));
+  }
+}
 
-    client.requestAccessToken({
+button.onclick = () => {
+  try {
+    if (!tokenClient) {
+      throw new Error("GIS_TOKEN_CLIENT_NOT_READY");
+    }
+
+    add("OAUTH_USER_GESTURE_REQUEST=PASS");
+
+    tokenClient.requestAccessToken({
       prompt: ""
     });
   }
   catch (e) {
-    out.push("PC7C_VIDEO_OAUTH=FAIL");
-    out.push("ERROR=" + String(e?.message || e));
-    report(out);
+    add("PC7C_VIDEO_OAUTH=FAIL");
+    add("ERROR=" + String(e?.message || e));
   }
 };
+
+initialize();
