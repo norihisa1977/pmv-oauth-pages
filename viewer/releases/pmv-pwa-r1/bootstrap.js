@@ -46,10 +46,18 @@ async function main() {
       sha256Text(wrapperText)
     ]);
 
-    if (sumoHash !== manifest.assets["vendor/libsodium-0.8.4/libsodium-sumo.mjs"].sha256) {
+    const expectedSumoHash = manifest.assets["vendor/libsodium-0.8.4/libsodium-sumo.mjs"].sha256;
+    const expectedWrapperHash = manifest.assets["vendor/libsodium-0.8.4/libsodium-wrappers.mjs"].sha256;
+
+    report.push("LIBSODIUM_SUMO_EXPECTED_SHA256=" + expectedSumoHash);
+    report.push("LIBSODIUM_SUMO_ACTUAL_SHA256=" + sumoHash);
+    report.push("LIBSODIUM_WRAPPER_EXPECTED_SHA256=" + expectedWrapperHash);
+    report.push("LIBSODIUM_WRAPPER_ACTUAL_SHA256=" + wrapperHash);
+
+    if (sumoHash !== expectedSumoHash) {
       throw new Error("ASSET_HASH_MISMATCH:libsodium-sumo.mjs");
     }
-    if (wrapperHash !== manifest.assets["vendor/libsodium-0.8.4/libsodium-wrappers.mjs"].sha256) {
+    if (wrapperHash !== expectedWrapperHash) {
       throw new Error("ASSET_HASH_MISMATCH:libsodium-wrappers.mjs");
     }
 
