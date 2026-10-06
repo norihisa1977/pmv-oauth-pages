@@ -863,13 +863,79 @@ button.onclick = async () => {
 
       add("VIDEO_ALL_SEGMENTS_AEAD_DECRYPT=PASS");
 
-      let mime = "video/mp4";
       const sourceName =
         String(manifest.source_file_name || "").toLowerCase();
 
-      if (sourceName.endsWith(".mov")) {
+      const extMatch =
+        sourceName.match(/\.([a-z0-9]+)$/);
+
+      const sourceExt =
+        extMatch ? extMatch[1] : "unknown";
+
+      add("VIDEO_SOURCE_EXTENSION=" + sourceExt);
+
+      const probeParts =
+        playbackParts.slice(0, Math.min(playbackParts.length, 4));
+
+      let probeLength = 0;
+      for (const part of probeParts) {
+        probeLength += Math.min(part.length, 1024 * 1024);
+      }
+
+      const probe =
+        new Uint8Array(probeLength);
+
+      let probeOffset = 0;
+      for (const part of probeParts) {
+        const take =
+          part.subarray(0, Math.min(part.length, 1024 * 1024));
+        probe.set(take, probeOffset);
+        probeOffset += take.length;
+      }
+
+      const ascii =
+        Array.from(
+          probe,
+          b => (b >= 32 && b <= 126) ? String.fromCharCode(b) : "."
+        ).join("");
+
+      const tags = [
+        "ftyp",
+        "qt  ",
+        "isom",
+        "mp41",
+        "mp42",
+        "avc1",
+        "hvc1",
+        "hev1",
+        "av01",
+        "vp09",
+        "mp4a",
+        "ac-3",
+        "ec-3"
+      ].filter(tag => ascii.includes(tag));
+
+      add("VIDEO_CONTAINER_CODEC_TAGS=" + (tags.length ? tags.join(",") : "NONE"));
+
+      let mime = "application/octet-stream";
+
+      if (
+        tags.includes("qt  ") ||
+        sourceExt === "mov"
+      ) {
         mime = "video/quicktime";
       }
+      else if (
+        tags.includes("ftyp") ||
+        ["mp4","m4v"].includes(sourceExt)
+      ) {
+        mime = "video/mp4";
+      }
+
+      add("VIDEO_MIME_CANDIDATE=" + mime);
+      add("VIDEO_CANPLAYTYPE=" + videoEl.canPlayType(mime));
+
+      sodium.memzero(probe);
 
       const blob =
         new Blob(
