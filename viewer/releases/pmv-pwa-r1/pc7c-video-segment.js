@@ -599,17 +599,53 @@ async function ensureVideoServiceWorker() {
       {scope: "./"}
     );
 
-  await navigator.serviceWorker.ready;
-
   serviceWorkerRegistration = registration;
 
+  await navigator.serviceWorker.ready;
+
   if (!navigator.serviceWorker.controller) {
-    add("VIDEO_SW_CONTROLLER=RELOAD_REQUIRED");
-    location.reload();
-    await new Promise(() => {});
+    add("VIDEO_SW_CONTROLLER=WAIT");
+
+    await new Promise((resolve, reject) => {
+      const timer =
+        setTimeout(() => {
+          navigator.serviceWorker.removeEventListener(
+            "controllerchange",
+            onControllerChange
+          );
+          reject(
+            new Error("VIDEO_SW_CONTROLLER_TIMEOUT")
+          );
+        }, 5000);
+
+      function onControllerChange() {
+        if (!navigator.serviceWorker.controller) {
+          return;
+        }
+
+        clearTimeout(timer);
+        navigator.serviceWorker.removeEventListener(
+          "controllerchange",
+          onControllerChange
+        );
+        resolve();
+      }
+
+      navigator.serviceWorker.addEventListener(
+        "controllerchange",
+        onControllerChange
+      );
+
+      onControllerChange();
+    });
+  }
+
+  if (!navigator.serviceWorker.controller) {
+    throw new Error("VIDEO_SW_CONTROLLER_MISSING");
   }
 
   serviceWorkerReady = true;
+  add("VIDEO_SW_CONTROLLER=PASS");
   add("VIDEO_SW_READY=PASS");
 }
 
