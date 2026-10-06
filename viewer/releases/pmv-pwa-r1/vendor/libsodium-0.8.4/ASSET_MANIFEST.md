@@ -8,9 +8,9 @@ Upstream ref: 0.8.4
 The ESM wrapper import specifier was changed only from `libsodium-sumo` to `./libsodium-sumo.mjs` so runtime loading is same-origin.
 
 ## SHA-256
-- libsodium-wrappers.mjs: d996f24dc79373c488309c06b5b0787921357369ee162455b6b17e6fc82d1c11
-- libsodium-sumo.mjs: 629719980ba5b49d38432608f95bb270fae599f7dc72bc82f623815aadb4b8c3
-- LICENSE: 9ba4b024e039602e304522dfe6225f6cc67e666b371bc97bd346d515f68bfba8
+- libsodium-wrappers.mjs: 5f8560f2d9822d138ca4ff1a63cbb1c378115140f2905438d7458b514cb9f608
+- libsodium-sumo.mjs: 4c94708f7e78eac7a32b29e2ce0ff96f4bd599d78c129f27bf8a061e20776c8c
+- LICENSE: ce7b8ba14db085aadb72359226ccf7273225db31dad653242a7726a10dabbbd4
 
 ## Policy
 - Third-party CDN crypto runtime: PROHIBITED
