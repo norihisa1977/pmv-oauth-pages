@@ -1,0 +1,85 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; connect-src 'self' https://www.googleapis.com; img-src blob:; style-src 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'">
+<title>PMV PC-7C Production Photo View</title>
+<style>
+body{
+  font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+  margin:24px;
+  line-height:1.5;
+  max-width:760px
+}
+input,button{
+  font:inherit;
+  padding:12px 14px
+}
+input{
+  width:min(100%,420px);
+  box-sizing:border-box
+}
+pre{
+  white-space:pre-wrap;
+  word-break:break-word;
+  background:#f5f5f5;
+  padding:12px
+}
+.note{
+  background:#fff8d8;
+  padding:12px
+}
+img{
+  display:block;
+  max-width:100%;
+  height:auto;
+  margin-top:18px
+}
+</style>
+</head>
+<body>
+
+<h1>PMV PC-7C Production Photo View</h1>
+
+<p class="note">
+This test downloads one existing encrypted Production photo,
+decrypts it in memory only, and displays it with a transient blob URL.
+No plaintext photo is written to persistent storage.
+</p>
+
+<label>
+PMV Password
+<br>
+<input
+  id="password"
+  type="password"
+  autocomplete="current-password">
+</label>
+
+<br><br>
+
+<button id="run">
+View Production Photo
+</button>
+
+<button
+  id="clear"
+  disabled>
+Clear Photo
+</button>
+
+<pre id="report">READY</pre>
+
+<img
+  id="photo"
+  alt="PMV Production photo"
+  hidden>
+
+<script
+  type="module"
+  src="./pc7c-photo-view.js">
+</script>
+
+</body>
+</html>
