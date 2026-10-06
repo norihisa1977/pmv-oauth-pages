@@ -1335,33 +1335,59 @@ button.onclick = async () => {
             moovStart + moovSize
           );
 
+        const uuidBox =
+          originalBoxes.find(
+            b => b.type === "uuid" &&
+                 b.offset < originalMdat.offset
+          );
+
+        const prefixEnd =
+          uuidBox ? uuidBox.offset : originalMdat.offset;
+
+        const removedPrefixBytes =
+          uuidBox ? uuidBox.size : 0;
+
+        const chunkOffsetDelta =
+          moovSize - removedPrefixBytes;
+
         patchChunkOffsetsForFastStart(
           transientMoov,
-          moovSize
+          chunkOffsetDelta
         );
 
         blobParts = [
-          ...virtualSlices(playbackParts, 0, mdatStart),
+          ...virtualSlices(playbackParts, 0, prefixEnd),
           transientMoov,
-          ...virtualSlices(playbackParts, mdatStart, moovStart),
           ...virtualSlices(
             playbackParts,
-            moovStart + moovSize,
+            originalMdat.offset,
+            originalMoov.offset
+          ),
+          ...virtualSlices(
+            playbackParts,
+            originalMoov.offset + originalMoov.size,
             manifest.total_plaintext_length
           )
         ];
 
+        const fastStartTotalLength =
+          manifest.total_plaintext_length -
+          removedPrefixBytes;
+
         parseTopLevelBoxes(
           blobParts,
-          manifest.total_plaintext_length,
+          fastStartTotalLength,
           "VIDEO_FASTSTART_MP4"
         );
 
         fastStartApplied = true;
 
         add("VIDEO_FASTSTART_APPLIED=YES");
+        add("VIDEO_FASTSTART_UUID_STRIPPED=" + Boolean(uuidBox));
+        add("VIDEO_FASTSTART_UUID_BYTES_REMOVED=" + removedPrefixBytes);
+        add("VIDEO_FASTSTART_CHUNK_OFFSET_DELTA=" + chunkOffsetDelta);
         add("VIDEO_FASTSTART_MOOV_SIZE=" + moovSize);
-        add("VIDEO_FASTSTART_NEW_MOOV_OFFSET=" + mdatStart);
+        add("VIDEO_FASTSTART_NEW_MOOV_OFFSET=" + prefixEnd);
       }
       else {
         add("VIDEO_FASTSTART_APPLIED=NO");
@@ -1373,7 +1399,15 @@ button.onclick = async () => {
           {type: mime}
         );
 
-      if (blob.size !== manifest.total_plaintext_length) {
+      const expectedBlobSize =
+        manifest.total_plaintext_length -
+        (
+          typeof removedPrefixBytes === "number"
+            ? removedPrefixBytes
+            : 0
+        );
+
+      if (blob.size !== expectedBlobSize) {
         throw new Error("VIDEO_BLOB_LENGTH_MISMATCH");
       }
 
