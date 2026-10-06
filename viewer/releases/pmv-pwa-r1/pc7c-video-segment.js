@@ -1038,9 +1038,218 @@ button.onclick = async () => {
 
       sodium.memzero(probe);
 
+      function readU32BE(bytes, offset) {
+        return (
+          (bytes[offset] * 0x1000000) +
+          (bytes[offset + 1] << 16) +
+          (bytes[offset + 2] << 8) +
+          bytes[offset + 3]
+        ) >>> 0;
+      }
+
+      function writeU32BE(bytes, offset, value) {
+        bytes[offset] = (value >>> 24) & 0xff;
+        bytes[offset + 1] = (value >>> 16) & 0xff;
+        bytes[offset + 2] = (value >>> 8) & 0xff;
+        bytes[offset + 3] = value & 0xff;
+      }
+
+      function virtualSlices(parts, start, end) {
+        const out = [];
+        let base = 0;
+
+        for (const part of parts) {
+          const partStart = base;
+          const partEnd = base + part.length;
+
+          if (end <= partStart) break;
+
+          if (start < partEnd && end > partStart) {
+            const localStart = Math.max(0, start - partStart);
+            const localEnd = Math.min(part.length, end - partStart);
+            out.push(part.subarray(localStart, localEnd));
+          }
+
+          base = partEnd;
+        }
+
+        return out;
+      }
+
+      function virtualCopy(parts, start, end) {
+        const slices = virtualSlices(parts, start, end);
+        const out = new Uint8Array(end - start);
+        let off = 0;
+
+        for (const slice of slices) {
+          out.set(slice, off);
+          off += slice.length;
+        }
+
+        if (off !== out.length) {
+          throw new Error("VIDEO_VIRTUAL_COPY_LENGTH_MISMATCH");
+        }
+
+        return out;
+      }
+
+      function patchChunkOffsetsForFastStart(moovBytes, delta) {
+        let stcoCount = 0;
+        let co64Count = 0;
+        let patchedEntries = 0;
+
+        for (let i = 4; i + 12 <= moovBytes.length; i++) {
+          const a = moovBytes[i];
+          const b = moovBytes[i + 1];
+          const d = moovBytes[i + 2];
+          const e = moovBytes[i + 3];
+
+          const isStco =
+            a === 0x73 && b === 0x74 && d === 0x63 && e === 0x6f;
+
+          const isCo64 =
+            a === 0x63 && b === 0x6f && d === 0x36 && e === 0x34;
+
+          if (!isStco && !isCo64) continue;
+
+          const boxStart = i - 4;
+          const boxSize = readU32BE(moovBytes, boxStart);
+
+          if (boxSize < 16 || boxStart + boxSize > moovBytes.length) {
+            continue;
+          }
+
+          const entryCount = readU32BE(moovBytes, i + 8);
+          const entrySize = isStco ? 4 : 8;
+          const entriesStart = i + 12;
+          const entriesEnd = entriesStart + entryCount * entrySize;
+
+          if (entriesEnd > boxStart + boxSize) {
+            continue;
+          }
+
+          if (isStco) {
+            stcoCount++;
+
+            for (let n = 0; n < entryCount; n++) {
+              const p = entriesStart + n * 4;
+              const oldValue = readU32BE(moovBytes, p);
+              const nextValue = oldValue + delta;
+
+              if (nextValue > 0xffffffff) {
+                throw new Error("VIDEO_FASTSTART_STCO_OVERFLOW");
+              }
+
+              writeU32BE(moovBytes, p, nextValue >>> 0);
+              patchedEntries++;
+            }
+          }
+          else {
+            co64Count++;
+
+            for (let n = 0; n < entryCount; n++) {
+              const p = entriesStart + n * 8;
+
+              const hi = BigInt(readU32BE(moovBytes, p));
+              const lo = BigInt(readU32BE(moovBytes, p + 4));
+              const oldValue = (hi << 32n) | lo;
+              const nextValue = oldValue + BigInt(delta);
+
+              writeU32BE(
+                moovBytes,
+                p,
+                Number((nextValue >> 32n) & 0xffffffffn)
+              );
+
+              writeU32BE(
+                moovBytes,
+                p + 4,
+                Number(nextValue & 0xffffffffn)
+              );
+
+              patchedEntries++;
+            }
+          }
+
+          i = boxStart + boxSize - 1;
+        }
+
+        add("VIDEO_FASTSTART_STCO_BOXES=" + stcoCount);
+        add("VIDEO_FASTSTART_CO64_BOXES=" + co64Count);
+        add("VIDEO_FASTSTART_OFFSET_ENTRIES_PATCHED=" + patchedEntries);
+
+        if (patchedEntries === 0) {
+          throw new Error("VIDEO_FASTSTART_NO_CHUNK_OFFSETS_PATCHED");
+        }
+      }
+
+      const mdatTypeOffsetHit =
+        findAsciiAcrossParts(playbackParts, "mdat");
+
+      const moovTypeOffsetHit =
+        findAsciiAcrossParts(playbackParts, "moov");
+
+      let blobParts = playbackParts;
+      let fastStartApplied = false;
+      let transientMoov = null;
+
+      if (
+        mdatTypeOffsetHit &&
+        moovTypeOffsetHit &&
+        moovTypeOffsetHit.globalOffset > mdatTypeOffsetHit.globalOffset
+      ) {
+        const mdatStart = mdatTypeOffsetHit.globalOffset - 4;
+        const moovStart = moovTypeOffsetHit.globalOffset - 4;
+
+        const moovHeader =
+          virtualCopy(playbackParts, moovStart, moovStart + 8);
+
+        const moovSize =
+          readU32BE(moovHeader, 0);
+
+        if (
+          moovSize < 8 ||
+          moovStart + moovSize > manifest.total_plaintext_length
+        ) {
+          throw new Error("VIDEO_FASTSTART_INVALID_MOOV_SIZE");
+        }
+
+        transientMoov =
+          virtualCopy(
+            playbackParts,
+            moovStart,
+            moovStart + moovSize
+          );
+
+        patchChunkOffsetsForFastStart(
+          transientMoov,
+          moovSize
+        );
+
+        blobParts = [
+          ...virtualSlices(playbackParts, 0, mdatStart),
+          transientMoov,
+          ...virtualSlices(playbackParts, mdatStart, moovStart),
+          ...virtualSlices(
+            playbackParts,
+            moovStart + moovSize,
+            manifest.total_plaintext_length
+          )
+        ];
+
+        fastStartApplied = true;
+
+        add("VIDEO_FASTSTART_APPLIED=YES");
+        add("VIDEO_FASTSTART_MOOV_SIZE=" + moovSize);
+        add("VIDEO_FASTSTART_NEW_MOOV_OFFSET=" + mdatStart);
+      }
+      else {
+        add("VIDEO_FASTSTART_APPLIED=NO");
+      }
+
       const blob =
         new Blob(
-          playbackParts,
+          blobParts,
           {type: mime}
         );
 
@@ -1057,7 +1266,9 @@ button.onclick = async () => {
         URL.createObjectURL(blob);
 
       currentPlaybackParts =
-        playbackParts;
+        transientMoov
+          ? [...playbackParts, transientMoov]
+          : playbackParts;
 
       videoEl.src =
         currentObjectUrl;
