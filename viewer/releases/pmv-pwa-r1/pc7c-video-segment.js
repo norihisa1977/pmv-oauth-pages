@@ -33,6 +33,14 @@ const button =
 const passwordEl =
   document.getElementById("password");
 
+const videoEl =
+  document.getElementById("video");
+
+const clearButton =
+  document.getElementById("clear");
+
+let currentObjectUrl = null;
+
 const lines = [];
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -529,6 +537,51 @@ function validateManifest(manifest) {
   add("VIDEO_MANIFEST_VALID=PASS");
 }
 
+function clearVideo() {
+  try {
+    videoEl.pause();
+    videoEl.removeAttribute("src");
+    videoEl.load();
+
+    if (currentObjectUrl) {
+      URL.revokeObjectURL(currentObjectUrl);
+      currentObjectUrl = null;
+      add("VIDEO_OBJECT_URL_RELEASED=PASS");
+    }
+
+    clearButton.disabled = true;
+  }
+  catch (e) {
+    add("VIDEO_CLEAR=FAIL");
+    add("VIDEO_CLEAR_ERROR=" + String(e?.message || e));
+  }
+}
+
+clearButton.onclick = clearVideo;
+
+videoEl.addEventListener("loadedmetadata", () => {
+  add("VIDEO_LOADEDMETADATA=PASS");
+  add("VIDEO_DURATION_SECONDS=" + videoEl.duration);
+});
+
+videoEl.addEventListener("canplay", () => {
+  add("VIDEO_CANPLAY=PASS");
+});
+
+videoEl.addEventListener("playing", () => {
+  add("VIDEO_PLAY_EVENT=PASS");
+});
+
+videoEl.addEventListener("seeked", () => {
+  add("VIDEO_SEEK_EVENT=PASS");
+  add("VIDEO_CURRENT_TIME=" + videoEl.currentTime);
+});
+
+videoEl.addEventListener("error", () => {
+  add("VIDEO_ELEMENT_ERROR=FAIL");
+  add("VIDEO_ELEMENT_ERROR_CODE=" + (videoEl.error?.code ?? "UNKNOWN"));
+});
+
 button.onclick = async () => {
   button.disabled = true;
   lines.length = 0;
@@ -756,8 +809,105 @@ button.onclick = async () => {
 
       add("VIDEO_SEGMENT_AEAD_DECRYPT=PASS");
       add("VIDEO_SEGMENT_PLAINTEXT_LENGTH_MATCH=PASS");
+
+      const maxTransientBytes =
+        256 * 1024 * 1024;
+
+      add("VIDEO_TOTAL_PLAINTEXT_BYTES=" + manifest.total_plaintext_length);
+      add("VIDEO_SEGMENT_COUNT=" + manifest.segment_count);
+
+      if (manifest.total_plaintext_length > maxTransientBytes) {
+        throw new Error("VIDEO_PLAYBACK_TRANSIENT_MEMORY_CAP_EXCEEDED");
+      }
+
+      const playbackParts = [segmentPlaintext];
+
+      for (let i = 1; i < manifest.segments.length; i++) {
+        const s = manifest.segments[i];
+
+        const ctext =
+          await driveRange(
+            accessToken,
+            VIDEO_FILE_ID,
+            s.offset,
+            s.offset + s.ciphertext_length - 1
+          );
+
+        if (ctext.length !== s.ciphertext_length) {
+          throw new Error("VIDEO_PLAYBACK_RANGE_LENGTH_MISMATCH:" + i);
+        }
+
+        const aad =
+          "vault_id=" + manifest.vault_id + "\n" +
+          "media_id=" + manifest.media_id + "\n" +
+          "format_version=" + manifest.format_version + "\n" +
+          "segment_index=" + s.segment_index + "\n" +
+          "segment_count=" + manifest.segment_count + "\n" +
+          "plaintext_length=" + s.plaintext_length + "\n";
+
+        const p =
+          sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+            null,
+            ctext,
+            encoder.encode(aad),
+            hexToBytes(s.nonce_hex),
+            mediaDek
+          );
+
+        if (p.length !== s.plaintext_length) {
+          throw new Error("VIDEO_PLAYBACK_SEGMENT_LENGTH_MISMATCH:" + i);
+        }
+
+        playbackParts.push(p);
+      }
+
+      add("VIDEO_ALL_SEGMENTS_AEAD_DECRYPT=PASS");
+
+      let mime = "video/mp4";
+      const sourceName =
+        String(manifest.source_file_name || "").toLowerCase();
+
+      if (sourceName.endsWith(".mov")) {
+        mime = "video/quicktime";
+      }
+
+      const blob =
+        new Blob(
+          playbackParts,
+          {type: mime}
+        );
+
+      if (blob.size !== manifest.total_plaintext_length) {
+        throw new Error("VIDEO_BLOB_LENGTH_MISMATCH");
+      }
+
+      add("VIDEO_TRANSIENT_BLOB_LENGTH_MATCH=PASS");
+      add("VIDEO_MIME=" + mime);
+
+      clearVideo();
+
+      currentObjectUrl =
+        URL.createObjectURL(blob);
+
+      videoEl.src =
+        currentObjectUrl;
+
+      clearButton.disabled = false;
+
+      add("VIDEO_OBJECT_URL_ACTIVE=YES");
       add("VIDEO_PLAINTEXT_FILE_CREATED=NO");
+      add("VIDEO_PLAINTEXT_PERSISTED=NO");
       add("PC7C_VIDEO_SEGMENT_RESULT=PASS");
+      add("PC7C_VIDEO_PLAYBACK_PREP=PASS");
+
+      for (const part of playbackParts) {
+        if (part instanceof Uint8Array) {
+          sodium.memzero(part);
+        }
+      }
+
+      segmentPlaintext = null;
+      add("VIDEO_SOURCE_BUFFERS_ZEROIZED=PASS");
     }
     finally {
       if (
