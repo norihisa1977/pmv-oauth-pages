@@ -10,11 +10,11 @@
   },
   "assets": {
     "vendor/libsodium-0.8.4/libsodium-wrappers.mjs": {
-      "sha256": "d996f24dc79373c488309c06b5b0787921357369ee162455b6b17e6fc82d1c11",
+      "sha256": "5f8560f2d9822d138ca4ff1a63cbb1c378115140f2905438d7458b514cb9f608",
       "executable": true
     },
     "vendor/libsodium-0.8.4/libsodium-sumo.mjs": {
-      "sha256": "629719980ba5b49d38432608f95bb270fae599f7dc72bc82f623815aadb4b8c3",
+      "sha256": "4c94708f7e78eac7a32b29e2ce0ff96f4bd599d78c129f27bf8a061e20776c8c",
       "executable": true
     }
   }
