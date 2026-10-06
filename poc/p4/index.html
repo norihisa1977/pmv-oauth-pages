@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>PMV P4 — Browser OAuth</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;margin:24px;line-height:1.5}
+button,input{font:inherit;padding:12px 14px;margin:6px 6px 6px 0}
+input{width:min(92vw,720px)}
+pre{white-space:pre-wrap;word-break:break-word;background:#f5f5f5;padding:12px}
+.note{background:#fff8d8;padding:12px}
+</style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+<h1>PMV P4 — Browser OAuth / Drive token model</h1>
+<p class="note"><strong>PoC only.</strong> No Production PMV media is read. No refresh token is requested or stored. The access token exists only in JavaScript memory. This page calls Drive <code>about.get</code> only to prove the token works.</p>
+
+<label>Web OAuth Client ID<br>
+<input id="clientId" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="...apps.googleusercontent.com"></label><br>
+
+<button id="init">Initialize</button>
+<button id="authorize" disabled>Authorize drive.file</button>
+<button id="expire" disabled>Simulate token expiry</button>
+<button id="renew" disabled>Renew with user gesture</button>
+<button id="clear" disabled>Clear in-memory token</button>
+<button id="copy">Copy report</button>
+
+<pre id="r"></pre>
+
+<script>
+const scope='https://www.googleapis.com/auth/drive.file';
+const report=document.getElementById('r');
+const L=[]; const add=s=>{L.push(s); report.textContent=L.join('\n')};
+let tokenClient=null;
+let accessToken=null;
+let expiresAt=0;
+let callbackMode='authorize';
+
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function waitForGIS(){
+  for(let i=0;i<100;i++){
+    if(window.google?.accounts?.oauth2) return true;
+    await sleep(100);
+  }
+  return false;
+}
+async function driveAbout(token){
+  const res=await fetch('https://www.googleapis.com/drive/v3/about?fields=storageQuota(limit,usage)',{
+    headers:{Authorization:'Bearer '+token}
+  });
+  add('DRIVE_ABOUT_HTTP='+res.status);
+  if(!res.ok) throw new Error('drive_about_http_'+res.status);
+  await res.json();
+  add('DRIVE_ABOUT_GET=PASS');
+}
+function setButtons(haveClient,haveToken){
+  document.getElementById('authorize').disabled=!haveClient;
+  document.getElementById('expire').disabled=!haveToken;
+  document.getElementById('renew').disabled=!haveClient;
+  document.getElementById('clear').disabled=!haveToken;
+}
+
+document.getElementById('init').onclick=async()=>{
+  try{
+    const clientId=document.getElementById('clientId').value.trim();
+    add('INIT_CLICK='+new Date().toISOString());
+    add('SECURE_CONTEXT='+window.isSecureContext);
+    add('ORIGIN='+location.origin);
+    add('REQUESTED_SCOPE='+scope);
+    add('LOCALSTORAGE_TOKEN_KEY_PRESENT='+(localStorage.getItem('pmv_access_token')!==null));
+    add('SESSIONSTORAGE_TOKEN_KEY_PRESENT='+(sessionStorage.getItem('pmv_access_token')!==null));
+    if(!clientId.endsWith('.apps.googleusercontent.com')) throw new Error('invalid_client_id_format');
+    if(!(await waitForGIS())) throw new Error('GIS_NOT_READY');
+    tokenClient=google.accounts.oauth2.initTokenClient({
+      client_id:clientId,
+      scope,
+      callback:async(resp)=>{
+        if(resp.error){add('OAUTH_ERROR='+resp.error);return}
+        accessToken=resp.access_token;
+        expiresAt=Date.now()+(Number(resp.expires_in||0)*1000);
+        add('TOKEN_CALLBACK_MODE='+callbackMode);
+        add('ACCESS_TOKEN_RECEIVED=PASS');
+        add('TOKEN_TYPE='+(resp.token_type||'UNKNOWN'));
+        add('EXPIRES_IN_SECONDS='+(resp.expires_in||'UNKNOWN'));
+        add('GRANTED_SCOPE='+(resp.scope||''));
+        add('REFRESH_TOKEN_FIELD_PRESENT='+Object.prototype.hasOwnProperty.call(resp,'refresh_token'));
+        add('ACCESS_TOKEN_PERSISTED_BY_TEST_CODE=NO');
+        try{await driveAbout(accessToken)}catch(e){add('DRIVE_ABOUT_GET=FAIL');add('ERROR='+String(e))}
+        setButtons(true,true);
+      }
+    });
+    add('GIS_TOKEN_CLIENT_INIT=PASS');
+    setButtons(true,false);
+  }catch(e){add('INIT=FAIL');add('ERROR='+String(e))}
+};
+
+document.getElementById('authorize').onclick=()=>{
+  callbackMode='authorize';
+  add('AUTHORIZE_USER_GESTURE='+new Date().toISOString());
+  tokenClient.requestAccessToken({prompt:'consent'});
+};
+
+document.getElementById('expire').onclick=()=>{
+  expiresAt=Date.now()-1;
+  add('SIMULATED_EXPIRED=true');
+  add('AUTO_RENEW_ATTEMPTED=false');
+  add('EXPLICIT_USER_GESTURE_REQUIRED=true');
+};
+
+document.getElementById('renew').onclick=()=>{
+  callbackMode='renew';
+  add('RENEW_USER_GESTURE='+new Date().toISOString());
+  tokenClient.requestAccessToken({prompt:''});
+};
+
+document.getElementById('clear').onclick=()=>{
+  if(accessToken){
+    try{google.accounts.oauth2.revoke(accessToken,()=>add('TOKEN_REVOKE_REQUESTED=PASS'))}catch{}
+  }
+  accessToken=null; expiresAt=0;
+  add('IN_MEMORY_TOKEN_CLEARED=PASS');
+  setButtons(!!tokenClient,false);
+};
+
+document.getElementById('copy').onclick=async()=>{
+  try{await navigator.clipboard.writeText(report.textContent);alert('Report copied.')}
+  catch{alert('Copy failed. Select report manually.')}
+};
+
+window.addEventListener('pagehide',()=>{accessToken=null;expiresAt=0});
+window.addEventListener('beforeunload',()=>{accessToken=null;expiresAt=0});
+</script>
+</body>
+</html>
