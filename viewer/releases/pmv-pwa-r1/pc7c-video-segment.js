@@ -42,6 +42,8 @@ const clearButton =
 let currentObjectUrl = null;
 let currentPlaybackParts = null;
 let activeSodium = null;
+let serviceWorkerRegistration = null;
+let serviceWorkerReady = false;
 
 const lines = [];
 const encoder = new TextEncoder();
@@ -539,11 +541,20 @@ function validateManifest(manifest) {
   add("VIDEO_MANIFEST_VALID=PASS");
 }
 
-function clearVideo() {
+async function clearVideo() {
   try {
     videoEl.pause();
     videoEl.removeAttribute("src");
     videoEl.load();
+
+    if (
+      serviceWorkerRegistration?.active
+    ) {
+      serviceWorkerRegistration.active.postMessage({
+        type: "PMV_VIDEO_CLEAR"
+      });
+      add("VIDEO_SW_CLEAR_SENT=YES");
+    }
 
     if (currentObjectUrl) {
       URL.revokeObjectURL(currentObjectUrl);
@@ -573,7 +584,34 @@ function clearVideo() {
   }
 }
 
-clearButton.onclick = clearVideo;
+clearButton.onclick = () => {
+  clearVideo();
+};
+
+async function ensureVideoServiceWorker() {
+  if (!("serviceWorker" in navigator)) {
+    throw new Error("VIDEO_SW_UNAVAILABLE");
+  }
+
+  const registration =
+    await navigator.serviceWorker.register(
+      "./pc7c-video-sw.js?v=pc7c-sw-range-v1",
+      {scope: "./"}
+    );
+
+  await navigator.serviceWorker.ready;
+
+  serviceWorkerRegistration = registration;
+
+  if (!navigator.serviceWorker.controller) {
+    add("VIDEO_SW_CONTROLLER=RELOAD_REQUIRED");
+    location.reload();
+    await new Promise(() => {});
+  }
+
+  serviceWorkerReady = true;
+  add("VIDEO_SW_READY=PASS");
+}
 
 videoEl.addEventListener("loadedmetadata", () => {
   add("VIDEO_LOADEDMETADATA=PASS");
@@ -1394,27 +1432,105 @@ button.onclick = async () => {
         add("VIDEO_FASTSTART_APPLIED=NO");
       }
 
-      const blob =
-        new Blob(
-          blobParts,
-          {type: mime}
-        );
-
       const expectedBlobSize =
         manifest.total_plaintext_length -
         removedPrefixBytes;
 
-      if (blob.size !== expectedBlobSize) {
-        throw new Error("VIDEO_BLOB_LENGTH_MISMATCH");
+      const transferParts =
+        blobParts.map(part => {
+          const copy = new Uint8Array(part.length);
+          copy.set(part);
+          return copy.buffer;
+        });
+
+      let transferTotal = 0;
+      for (const buffer of transferParts) {
+        transferTotal += buffer.byteLength;
       }
 
-      add("VIDEO_TRANSIENT_BLOB_LENGTH_MATCH=PASS");
+      if (transferTotal !== expectedBlobSize) {
+        throw new Error("VIDEO_SW_TRANSFER_LENGTH_MISMATCH");
+      }
+
+      add("VIDEO_SW_TRANSFER_LENGTH_MATCH=PASS");
       add("VIDEO_MIME=" + mime);
 
-      clearVideo();
+      await clearVideo();
+      await ensureVideoServiceWorker();
 
-      currentObjectUrl =
-        URL.createObjectURL(blob);
+      const sw =
+        navigator.serviceWorker.controller;
+
+      if (!sw) {
+        throw new Error("VIDEO_SW_CONTROLLER_MISSING");
+      }
+
+      const swReadyPromise =
+        new Promise((resolve, reject) => {
+          const timer =
+            setTimeout(
+              () => {
+                navigator.serviceWorker.removeEventListener(
+                  "message",
+                  onMessage
+                );
+                reject(
+                  new Error("VIDEO_SW_SET_TIMEOUT")
+                );
+              },
+              5000
+            );
+
+          function onMessage(event) {
+            if (
+              event.data?.type ===
+              "PMV_VIDEO_SET_RESULT"
+            ) {
+              clearTimeout(timer);
+              navigator.serviceWorker.removeEventListener(
+                "message",
+                onMessage
+              );
+
+              if (!event.data.ok) {
+                reject(
+                  new Error("VIDEO_SW_SET_FAILED")
+                );
+                return;
+              }
+
+              resolve(event.data);
+            }
+          }
+
+          navigator.serviceWorker.addEventListener(
+            "message",
+            onMessage
+          );
+        });
+
+      sw.postMessage(
+        {
+          type: "PMV_VIDEO_SET",
+          parts: transferParts,
+          totalLength: transferTotal,
+          mime
+        },
+        transferParts
+      );
+
+      const swResult =
+        await swReadyPromise;
+
+      if (
+        swResult.totalLength !== transferTotal
+      ) {
+        throw new Error(
+          "VIDEO_SW_SET_LENGTH_MISMATCH"
+        );
+      }
+
+      add("VIDEO_SW_BUFFER_SET=PASS");
 
       currentPlaybackParts =
         transientMoov
@@ -1422,11 +1538,14 @@ button.onclick = async () => {
           : playbackParts;
 
       videoEl.src =
-        currentObjectUrl;
+        "./pc7c-video-virtual.mp4?v=" +
+        Date.now();
+
+      videoEl.load();
 
       clearButton.disabled = false;
 
-      add("VIDEO_OBJECT_URL_ACTIVE=YES");
+      add("VIDEO_VIRTUAL_RANGE_SOURCE_ACTIVE=YES");
       add("VIDEO_PLAINTEXT_FILE_CREATED=NO");
       add("VIDEO_PLAINTEXT_PERSISTED=NO");
       add("VIDEO_SOURCE_BUFFERS_HELD_UNTIL_CLEAR=YES");
