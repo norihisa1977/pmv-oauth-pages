@@ -1183,11 +1183,125 @@ button.onclick = async () => {
         }
       }
 
+      function readType(bytes, offset) {
+        return String.fromCharCode(
+          bytes[offset],
+          bytes[offset + 1],
+          bytes[offset + 2],
+          bytes[offset + 3]
+        );
+      }
+
+      function parseTopLevelBoxes(parts, totalLength, label) {
+        let offset = 0;
+        const boxes = [];
+        let guard = 0;
+
+        while (offset < totalLength && guard++ < 64) {
+          if (offset + 8 > totalLength) {
+            throw new Error(label + "_TRUNCATED_BOX_HEADER");
+          }
+
+          const header = virtualCopy(parts, offset, Math.min(offset + 16, totalLength));
+          let size = readU32BE(header, 0);
+          const type = readType(header, 4);
+          let headerSize = 8;
+
+          if (size === 1) {
+            if (header.length < 16) {
+              throw new Error(label + "_TRUNCATED_EXTENDED_SIZE");
+            }
+
+            const hi = BigInt(readU32BE(header, 8));
+            const lo = BigInt(readU32BE(header, 12));
+            const size64 = (hi << 32n) | lo;
+
+            if (size64 > BigInt(Number.MAX_SAFE_INTEGER)) {
+              throw new Error(label + "_BOX_TOO_LARGE");
+            }
+
+            size = Number(size64);
+            headerSize = 16;
+          }
+          else if (size === 0) {
+            size = totalLength - offset;
+          }
+
+          if (size < headerSize || offset + size > totalLength) {
+            throw new Error(
+              label + "_INVALID_BOX:" + type + ":" + offset + ":" + size
+            );
+          }
+
+          boxes.push({type, offset, size});
+          offset += size;
+        }
+
+        if (offset !== totalLength) {
+          throw new Error(label + "_TOPLEVEL_LENGTH_MISMATCH");
+        }
+
+        add(
+          label + "_TOPLEVEL_BOXES=" +
+          boxes.map(b => b.type + "@" + b.offset + "+" + b.size).join(",")
+        );
+        add(label + "_TOPLEVEL_PARSE=PASS");
+
+        return boxes;
+      }
+
+      const originalBoxes =
+        parseTopLevelBoxes(
+          playbackParts,
+          manifest.total_plaintext_length,
+          "VIDEO_ORIGINAL_MP4"
+        );
+
+      const originalMdat =
+        originalBoxes.find(b => b.type === "mdat");
+
+      const originalMoov =
+        originalBoxes.find(b => b.type === "moov");
+
+      if (!originalMdat || !originalMoov) {
+        throw new Error("VIDEO_MP4_REQUIRED_BOX_MISSING");
+      }
+
+      const esdsHit =
+        findAsciiAcrossParts(playbackParts, "esds");
+
+      if (esdsHit) {
+        const start =
+          Math.max(0, esdsHit.globalOffset - 4);
+
+        const end =
+          Math.min(
+            manifest.total_plaintext_length,
+            start + 256
+          );
+
+        const esdsBytes =
+          virtualCopy(playbackParts, start, end);
+
+        add("VIDEO_ESDS_OFFSET=" + esdsHit.globalOffset);
+        add(
+          "VIDEO_ESDS_PREFIX_HEX=" +
+          bytesToHex(esdsBytes.slice(0, Math.min(96, esdsBytes.length)))
+        );
+      }
+      else {
+        add("VIDEO_ESDS_OFFSET=NOT_FOUND");
+      }
+
       const mdatTypeOffsetHit =
-        findAsciiAcrossParts(playbackParts, "mdat");
+        {
+          globalOffset: originalMdat.offset + 4
+        };
 
       const moovTypeOffsetHit =
-        findAsciiAcrossParts(playbackParts, "moov");
+        {
+          globalOffset: originalMoov.offset + 4
+        };
 
       let blobParts = playbackParts;
       let fastStartApplied = false;
@@ -1236,6 +1350,12 @@ button.onclick = async () => {
             manifest.total_plaintext_length
           )
         ];
+
+        parseTopLevelBoxes(
+          blobParts,
+          manifest.total_plaintext_length,
+          "VIDEO_FASTSTART_MP4"
+        );
 
         fastStartApplied = true;
 
