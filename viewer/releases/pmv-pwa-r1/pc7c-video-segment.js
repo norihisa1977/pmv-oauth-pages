@@ -33,17 +33,14 @@ const button =
 const passwordEl =
   document.getElementById("password");
 
-const videoEl =
-  document.getElementById("video");
+const playbackFrame =
+  document.getElementById("playbackFrame");
 
 const clearButton =
   document.getElementById("clear");
 
-let currentObjectUrl = null;
 let currentPlaybackParts = null;
 let activeSodium = null;
-let serviceWorkerRegistration = null;
-let serviceWorkerReady = false;
 
 const lines = [];
 const encoder = new TextEncoder();
