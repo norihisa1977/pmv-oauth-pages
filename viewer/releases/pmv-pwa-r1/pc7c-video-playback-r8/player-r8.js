@@ -1,0 +1,111 @@
+const video=document.getElementById("video");
+let readyPromise=null;
+
+function send(type,extra={}){
+  parent.postMessage({source:"PMV_PC7C_PLAYBACK_R8",type,...extra},location.origin);
+}
+
+async function ready(){
+  if(readyPromise)return readyPromise;
+  readyPromise=(async()=>{
+    if(!("serviceWorker" in navigator))throw new Error("VIDEO_SW_UNAVAILABLE");
+    await navigator.serviceWorker.register("./sw-r8.js",{scope:"./"});
+    await navigator.serviceWorker.ready;
+    if(!navigator.serviceWorker.controller){
+      await new Promise((resolve,reject)=>{
+        const timer=setTimeout(()=>reject(new Error("VIDEO_SW_CONTROLLER_TIMEOUT")),5000);
+        const changed=()=>{
+          if(navigator.serviceWorker.controller){
+            clearTimeout(timer);
+            navigator.serviceWorker.removeEventListener("controllerchange",changed);
+            resolve();
+          }
+        };
+        navigator.serviceWorker.addEventListener("controllerchange",changed);
+        changed();
+      });
+    }
+    if(!navigator.serviceWorker.controller)throw new Error("VIDEO_SW_CONTROLLER_MISSING");
+    send("READY");
+  })();
+  return readyPromise;
+}
+
+function swRequest(message,transfer=[],timeoutMs=15000){
+  return new Promise((resolve,reject)=>{
+    const sw=navigator.serviceWorker.controller;
+    if(!sw){reject(new Error("VIDEO_SW_CONTROLLER_MISSING"));return;}
+    const channel=new MessageChannel();
+    const timer=setTimeout(()=>{
+      try{channel.port1.close();}catch(_){}
+      reject(new Error("VIDEO_SW_REQUEST_TIMEOUT:"+message.type));
+    },timeoutMs);
+    channel.port1.onmessage=ev=>{
+      clearTimeout(timer);
+      try{channel.port1.close();}catch(_){}
+      resolve(ev.data||{});
+    };
+    sw.postMessage(message,[...transfer,channel.port2]);
+  });
+}
+
+window.addEventListener("message",async e=>{
+  if(e.origin!==location.origin||e.source!==parent)return;
+  const d=e.data||{};
+  try{
+    await ready();
+
+    if(d.type==="PMV_VIDEO_SET_BEGIN"){
+      const r=await swRequest({
+        type:"PMV_VIDEO_SET_BEGIN",
+        partCount:d.partCount,
+        totalLength:d.totalLength,
+        mime:d.mime
+      });
+      send("SET_BEGIN_RESULT",r);
+    }
+    else if(d.type==="PMV_VIDEO_SET_PART"){
+      const r=await swRequest(
+        {type:"PMV_VIDEO_SET_PART",index:d.index,buffer:d.buffer},
+        [d.buffer],
+        20000
+      );
+      send("SET_PART_RESULT",r);
+    }
+    else if(d.type==="PMV_VIDEO_SET_COMMIT"){
+      const r=await swRequest({type:"PMV_VIDEO_SET_COMMIT"});
+      send("SET_RESULT",r);
+    }
+    else if(d.type==="PMV_VIDEO_CLEAR"){
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+      const r=await swRequest({type:"PMV_VIDEO_CLEAR"});
+      send("CLEAR_RESULT",r);
+    }
+    else if(d.type==="PMV_VIDEO_PLAY"){
+      video.src="./virtual-r8.mp4?v="+Date.now();
+      video.load();
+      send("SOURCE_ACTIVE");
+    }
+  }catch(err){
+    send("ERROR",{message:String(err?.message||err)});
+  }
+});
+
+function clearOnExit(){
+  try{
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+    navigator.serviceWorker.controller?.postMessage({type:"PMV_VIDEO_CLEAR"});
+  }catch(_){}
+}
+
+window.addEventListener("pagehide",clearOnExit);
+video.addEventListener("loadedmetadata",()=>send("LOADEDMETADATA",{duration:video.duration}));
+video.addEventListener("canplay",()=>send("CANPLAY"));
+video.addEventListener("playing",()=>send("PLAYING"));
+video.addEventListener("seeked",()=>send("SEEKED",{currentTime:video.currentTime}));
+video.addEventListener("error",()=>send("VIDEO_ERROR",{code:video.error?.code??"UNKNOWN"}));
+ready().catch(e=>send("ERROR",{message:String(e?.message||e)}));
