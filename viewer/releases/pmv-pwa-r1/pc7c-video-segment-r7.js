@@ -639,7 +639,7 @@ function ensurePlaybackFrame() {
 
     window.addEventListener("message", onMessage);
     playbackFrame.src =
-      "./pc7c-video-playback-r7/index.html?v=chunk3";
+      "./pc7c-video-playback-r7/index.html?v=chunk4";
   });
 
   return playbackReadyPromise;
@@ -1467,46 +1467,77 @@ button.onclick = async () => {
       await clearVideo();
       await ensurePlaybackFrame();
 
-      const swReadyPromise =
-        new Promise((resolve, reject) => {
-          const timer = setTimeout(
-            () => reject(new Error("VIDEO_SW_SET_TIMEOUT")),
-            120000
-          );
+      function frameRequest(message, transfer, expectedType, timeoutMs = 20000) {
+        return new Promise((resolve, reject) => {
+          const timer = setTimeout(() => {
+            window.removeEventListener("message", onMessage);
+            reject(new Error("VIDEO_FRAME_REQUEST_TIMEOUT:" + message.type));
+          }, timeoutMs);
 
           function onMessage(event) {
             if (
               event.origin !== location.origin ||
               event.source !== playbackFrame.contentWindow ||
               event.data?.source !== "PMV_PC7C_PLAYBACK_R7" ||
-              event.data?.type !== "SET_RESULT"
+              event.data?.type !== expectedType
             ) return;
 
             clearTimeout(timer);
             window.removeEventListener("message", onMessage);
-
-            if (!event.data.ok) {
-              reject(new Error("VIDEO_SW_SET_FAILED"));
-              return;
-            }
             resolve(event.data);
           }
-          window.addEventListener("message", onMessage);
-        });
 
-      playbackFrame.contentWindow.postMessage(
-        {
-          type: "PMV_VIDEO_SET",
-          parts: transferParts,
-          totalLength: transferTotal,
-          mime
-        },
-        location.origin,
-        transferParts
-      );
+          window.addEventListener("message", onMessage);
+          playbackFrame.contentWindow.postMessage(
+            message,
+            location.origin,
+            transfer || []
+          );
+        });
+      }
+
+      const beginResult =
+        await frameRequest(
+          {
+            type: "PMV_VIDEO_SET_BEGIN",
+            partCount: transferParts.length,
+            totalLength: transferTotal,
+            mime
+          },
+          [],
+          "SET_BEGIN_RESULT"
+        );
+
+      if (!beginResult.ok) {
+        throw new Error("VIDEO_SW_SET_BEGIN_FAILED");
+      }
+
+      for (let i = 0; i < transferParts.length; i++) {
+        const buffer = transferParts[i];
+
+        const partResult =
+          await frameRequest(
+            {
+              type: "PMV_VIDEO_SET_PART",
+              index: i,
+              buffer
+            },
+            [buffer],
+            "SET_PART_RESULT",
+            30000
+          );
+
+        if (!partResult.ok || partResult.index !== i) {
+          throw new Error("VIDEO_SW_SET_PART_FAILED:" + i);
+        }
+      }
 
       const swResult =
-        await swReadyPromise;
+        await frameRequest(
+          {type: "PMV_VIDEO_SET_COMMIT"},
+          [],
+          "SET_RESULT"
+        );
 
       if (
         swResult.totalLength !== transferTotal
