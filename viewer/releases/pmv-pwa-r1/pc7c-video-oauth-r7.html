@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://accounts.google.com/gsi/client; connect-src https://accounts.google.com; style-src 'unsafe-inline'; frame-src https://accounts.google.com; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'">
+<title>PMV PC-7C Video OAuth</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;margin:24px;line-height:1.5;max-width:760px}
+button{font:inherit;padding:12px 14px}
+pre{white-space:pre-wrap;word-break:break-word;background:#f5f5f5;padding:12px}
+.note{background:#fff8d8;padding:12px}
+</style>
+</head>
+<body>
+<h1>PMV PC-7C Production Video Segment</h1>
+<p class="note">OAuth context only. Do not enter the PMV Password here.</p>
+<button id="authorize">Authorize Drive</button>
+<pre id="report">BUILD=pc7c-video-r7\nREADY</pre>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script type="module" src="./pc7c-video-oauth-r7.js"></script>
+</body>
+</html>
