@@ -639,7 +639,7 @@ function ensurePlaybackFrame() {
 
     window.addEventListener("message", onMessage);
     playbackFrame.src =
-      "./pc7c-video-playback-r7/index.html";
+      "./pc7c-video-playback-r7/index.html?v=ack2";
   });
 
   return playbackReadyPromise;
