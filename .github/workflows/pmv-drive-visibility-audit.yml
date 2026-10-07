@@ -1,0 +1,43 @@
+name: PMV Drive Visibility Audit CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/drive-visibility-audit/**"
+      - ".github/workflows/pmv-drive-visibility-audit.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/drive-visibility-audit
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cargo fmt
+        run: cargo fmt --check
+      - name: Cargo check
+        run: cargo check --locked || cargo check
+      - name: Cargo test
+        run: cargo test --locked || cargo test
+      - name: Static security contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          src=src/main.rs
+          grep -Fq 'https://www.googleapis.com/auth/drive.file' "$src"
+          grep -Fq '.query(&[("fields", "id,size")])' "$src"
+          grep -Fq 'NOT_VISIBLE_OR_NOT_FOUND_TO_CLIENT' "$src"
+          grep -Fq 'MEDIA_BODY_DOWNLOADED=NO' "$src"
+          grep -Fq 'PRODUCTION_MUTATION=NO' "$src"
+          if grep -Eq 'files\.list|alt=media' "$src"; then
+            echo "FORBIDDEN_DRIVE_OPERATION_REFERENCE"
+            exit 1
+          fi
+          echo "STATIC_SECURITY_CONTRACT=PASS"
