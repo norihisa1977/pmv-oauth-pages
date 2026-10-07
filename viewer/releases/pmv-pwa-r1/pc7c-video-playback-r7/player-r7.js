@@ -9,7 +9,7 @@ async function ready(){
   if(readyPromise)return readyPromise;
   readyPromise=(async()=>{
     if(!("serviceWorker" in navigator))throw new Error("VIDEO_SW_UNAVAILABLE");
-    await navigator.serviceWorker.register("./sw-r7.js?v=chunk3",{scope:"./"});
+    await navigator.serviceWorker.register("./sw-r7.js?v=chunk4",{scope:"./"});
     await navigator.serviceWorker.ready;
     if(!navigator.serviceWorker.controller){
       await new Promise((resolve,reject)=>{
@@ -51,40 +51,39 @@ function swRequest(message,transfer=[],timeoutMs=15000){
 
 window.addEventListener("message",async e=>{
   if(e.origin!==location.origin||e.source!==parent)return;
+  const d=e.data||{};
   try{
     await ready();
 
-    if(e.data?.type==="PMV_VIDEO_SET"){
-      const buffers=e.data.parts||[];
-      let r=await swRequest({
+    if(d.type==="PMV_VIDEO_SET_BEGIN"){
+      const r=await swRequest({
         type:"PMV_VIDEO_SET_BEGIN",
-        partCount:buffers.length,
-        totalLength:e.data.totalLength,
-        mime:e.data.mime
+        partCount:d.partCount,
+        totalLength:d.totalLength,
+        mime:d.mime
       });
-      if(!r.ok)throw new Error("VIDEO_SW_SET_BEGIN_FAILED");
-
-      for(let i=0;i<buffers.length;i++){
-        const buffer=buffers[i];
-        r=await swRequest(
-          {type:"PMV_VIDEO_SET_PART",index:i,buffer},
-          [buffer],
-          15000
-        );
-        if(!r.ok||r.index!==i)throw new Error("VIDEO_SW_SET_PART_FAILED:"+i);
-      }
-
-      r=await swRequest({type:"PMV_VIDEO_SET_COMMIT"});
+      send("SET_BEGIN_RESULT",r);
+    }
+    else if(d.type==="PMV_VIDEO_SET_PART"){
+      const r=await swRequest(
+        {type:"PMV_VIDEO_SET_PART",index:d.index,buffer:d.buffer},
+        [d.buffer],
+        20000
+      );
+      send("SET_PART_RESULT",r);
+    }
+    else if(d.type==="PMV_VIDEO_SET_COMMIT"){
+      const r=await swRequest({type:"PMV_VIDEO_SET_COMMIT"});
       send("SET_RESULT",r);
     }
-    else if(e.data?.type==="PMV_VIDEO_CLEAR"){
+    else if(d.type==="PMV_VIDEO_CLEAR"){
       video.pause();
       video.removeAttribute("src");
       video.load();
       const r=await swRequest({type:"PMV_VIDEO_CLEAR"});
       send("CLEAR_RESULT",r);
     }
-    else if(e.data?.type==="PMV_VIDEO_PLAY"){
+    else if(d.type==="PMV_VIDEO_PLAY"){
       video.src="./virtual-r7.mp4?v="+Date.now();
       video.load();
       send("SOURCE_ACTIVE");
