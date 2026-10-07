@@ -32,7 +32,7 @@ function copy(s,en){
 }
 function headers(n){return {"Content-Type":mime,"Content-Length":String(n),"Accept-Ranges":"bytes","Cache-Control":"no-store"};}
 self.addEventListener("fetch",e=>{
- const u=new URL(e.request.url);if(!u.pathname.endsWith("/pc7c-video-playback-v5/virtual-r7.mp4"))return;
+ const u=new URL(e.request.url);if(!u.pathname.endsWith("/pc7c-video-playback-r7/virtual-r7.mp4"))return;
  e.respondWith((async()=>{
   if(!total||!parts.length)return new Response("unavailable",{status:503});
   if(e.request.method==="HEAD")return new Response(null,{status:200,headers:headers(total)});
