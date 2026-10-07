@@ -2,7 +2,7 @@
   "name": "PMV Photo",
   "short_name": "PMV",
   "description": "Private Media Vault photo-only viewer",
-  "start_url": "./pc7c-photo-oauth.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#ffffff",
