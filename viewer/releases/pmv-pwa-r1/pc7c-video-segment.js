@@ -540,23 +540,15 @@ function validateManifest(manifest) {
 
 async function clearVideo() {
   try {
-    videoEl.pause();
-    videoEl.removeAttribute("src");
-    videoEl.load();
-
     if (
-      serviceWorkerRegistration?.active
+      playbackFrame?.contentWindow &&
+      playbackFrame.src !== "about:blank"
     ) {
-      serviceWorkerRegistration.active.postMessage({
-        type: "PMV_VIDEO_CLEAR"
-      });
+      playbackFrame.contentWindow.postMessage(
+        {type: "PMV_VIDEO_CLEAR"},
+        location.origin
+      );
       add("VIDEO_SW_CLEAR_SENT=YES");
-    }
-
-    if (currentObjectUrl) {
-      URL.revokeObjectURL(currentObjectUrl);
-      currentObjectUrl = null;
-      add("VIDEO_OBJECT_URL_RELEASED=PASS");
     }
 
     if (
@@ -630,7 +622,7 @@ function ensurePlaybackFrame() {
 
     window.addEventListener("message", onMessage);
     playbackFrame.src =
-      "./pc7c-video-playback/index.html?v=pc7c-sw-scope-v2";
+      "./pc7c-video-playback/index.html?v=pc7c-sw-scope-v4";
   });
 
   return playbackReadyPromise;
