@@ -106,7 +106,7 @@ async function initialize() {
             add("SAME_ORIGIN_HANDOFF_STAGED=PASS");
 
             location.replace(
-              "./pc7c-video-segment-r7.html?v=ack2"
+              "./pc7c-video-segment-r7.html?v=chunk3"
             );
           }
           catch (e) {
