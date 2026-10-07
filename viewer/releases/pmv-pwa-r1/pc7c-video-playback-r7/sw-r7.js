@@ -4,14 +4,14 @@ self.addEventListener("install",()=>self.skipWaiting());
 self.addEventListener("activate",e=>e.waitUntil(self.clients.claim()));
 self.addEventListener("message",e=>{
  const d=e.data||{};
- if(d.type==="PMV_VIDEO_CLEAR"){wipe();e.source?.postMessage({type:"PMV_VIDEO_CLEAR_RESULT",ok:true});return;}
+ if(d.type==="PMV_VIDEO_CLEAR"){wipe();const port=e.ports&&e.ports[0];if(port)port.postMessage({type:"PMV_VIDEO_CLEAR_RESULT",ok:true});else e.source?.postMessage({type:"PMV_VIDEO_CLEAR_RESULT",ok:true});return;}
  if(d.type!=="PMV_VIDEO_SET")return;
  wipe();let at=0;
  for(const b of d.parts||[]){const p=new Uint8Array(b);offsets.push(at);parts.push(p);at+=p.length;}
  total=at;mime=String(d.mime||"video/mp4");
  const ok=parts.length>0&&total===Number(d.totalLength);
  if(!ok)wipe();
- e.source?.postMessage({type:"PMV_VIDEO_SET_RESULT",ok,totalLength:ok?total:0});
+ const port=e.ports&&e.ports[0];if(port)port.postMessage({type:"PMV_VIDEO_SET_RESULT",ok,totalLength:ok?total:0});else e.source?.postMessage({type:"PMV_VIDEO_SET_RESULT",ok,totalLength:ok?total:0});
 });
 function range(v){
  if(!v)return null;
