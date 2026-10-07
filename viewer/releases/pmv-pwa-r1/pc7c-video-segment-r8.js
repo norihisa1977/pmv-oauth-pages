@@ -639,7 +639,7 @@ function ensurePlaybackFrame() {
 
     window.addEventListener("message", onMessage);
     playbackFrame.src =
-      "./pc7c-video-playback-r8/index.html";
+      "./pc7c-video-playback-r8/index.html?v=orderfix1";
   });
 
   return playbackReadyPromise;
@@ -1464,8 +1464,8 @@ button.onclick = async () => {
       add("VIDEO_SW_TRANSFER_LENGTH_MATCH=PASS");
       add("VIDEO_MIME=" + mime);
 
-      await clearVideo();
       await ensurePlaybackFrame();
+      await clearVideo();
 
       function frameRequest(message, transfer, expectedType, timeoutMs = 20000) {
         return new Promise((resolve, reject) => {
