@@ -639,7 +639,7 @@ function ensurePlaybackFrame() {
 
     window.addEventListener("message", onMessage);
     playbackFrame.src =
-      "./pc7c-video-playback-r7/index.html?v=ack2";
+      "./pc7c-video-playback-r7/index.html?v=chunk3";
   });
 
   return playbackReadyPromise;
@@ -1471,7 +1471,7 @@ button.onclick = async () => {
         new Promise((resolve, reject) => {
           const timer = setTimeout(
             () => reject(new Error("VIDEO_SW_SET_TIMEOUT")),
-            5000
+            120000
           );
 
           function onMessage(event) {
