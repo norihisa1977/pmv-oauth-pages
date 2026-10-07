@@ -3,13 +3,7 @@ use reqwest::blocking::Client;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::{
-    env,
-    fs,
-    path::PathBuf,
-    thread,
-    time::Duration,
-};
+use std::{env, fs, path::PathBuf, thread, time::Duration};
 
 const DRIVE_FILE_SCOPE: &str = "https://www.googleapis.com/auth/drive.file";
 const FORMAT_ID: &str = "PMV-DRIVE-VISIBILITY-AUDIT-V1";
@@ -97,8 +91,8 @@ fn main() {
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    let token = env::var("PMV_DRIVE_ACCESS_TOKEN")
-        .map_err(|_| "PMV_DRIVE_ACCESS_TOKEN is not set")?;
+    let token =
+        env::var("PMV_DRIVE_ACCESS_TOKEN").map_err(|_| "PMV_DRIVE_ACCESS_TOKEN is not set")?;
 
     if token.trim().is_empty() {
         return Err("PMV_DRIVE_ACCESS_TOKEN is empty".into());
@@ -129,12 +123,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut results = Vec::with_capacity(file_ids.len());
 
     for file_id in &file_ids {
-        results.push(probe_file(
-            &client,
-            &token,
-            file_id,
-            args.max_retries,
-        ));
+        results.push(probe_file(&client, &token, file_id, args.max_retries));
     }
 
     if results.len() != file_ids.len() {
@@ -171,10 +160,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         results,
     };
 
-    fs::write(
-        &args.output,
-        serde_json::to_vec_pretty(&evidence)?,
-    )?;
+    fs::write(&args.output, serde_json::to_vec_pretty(&evidence)?)?;
 
     println!("DRIVE_VISIBILITY_AUDIT=PASS");
     println!("CLIENT_ID={}", args.client_id);
@@ -185,7 +171,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     println!("ERROR={}", evidence.error);
     println!(
         "ALL_TARGETS_VISIBLE={}",
-        if evidence.all_targets_visible { "YES" } else { "NO" }
+        if evidence.all_targets_visible {
+            "YES"
+        } else {
+            "NO"
+        }
     );
     println!("MEDIA_BODY_DOWNLOADED=NO");
     println!("PRODUCTION_MUTATION=NO");
@@ -204,11 +194,7 @@ fn verify_token_context(
         .send()?;
 
     if !response.status().is_success() {
-        return Err(format!(
-            "TOKENINFO_HTTP_{}",
-            response.status().as_u16()
-        )
-        .into());
+        return Err(format!("TOKENINFO_HTTP_{}", response.status().as_u16()).into());
     }
 
     let info: TokenInfo = response.json()?;
@@ -241,12 +227,7 @@ fn verify_token_context(
     Ok(())
 }
 
-fn probe_file(
-    client: &Client,
-    token: &str,
-    file_id: &str,
-    max_retries: u32,
-) -> AuditResult {
+fn probe_file(client: &Client, token: &str, file_id: &str, max_retries: u32) -> AuditResult {
     let url = format!(
         "https://www.googleapis.com/drive/v3/files/{}",
         percent_encode_path_segment(file_id)
@@ -275,11 +256,7 @@ fn probe_file(
                             };
                         }
                         Ok(_) => {
-                            return error_result(
-                                file_id,
-                                Some(200),
-                                "RESPONSE_ID_MISMATCH",
-                            );
+                            return error_result(file_id, Some(200), "RESPONSE_ID_MISMATCH");
                         }
                         Err(e) => {
                             return error_result(
@@ -291,17 +268,13 @@ fn probe_file(
                     }
                 }
 
-                if status == StatusCode::FORBIDDEN
-                    || status == StatusCode::NOT_FOUND
-                {
+                if status == StatusCode::FORBIDDEN || status == StatusCode::NOT_FOUND {
                     return AuditResult {
                         file_id: file_id.to_owned(),
                         classification: Classification::NotVisible,
                         http_status: Some(status.as_u16()),
                         size: None,
-                        error: Some(
-                            "NOT_VISIBLE_OR_NOT_FOUND_TO_CLIENT".to_string(),
-                        ),
+                        error: Some("NOT_VISIBLE_OR_NOT_FOUND_TO_CLIENT".to_string()),
                     };
                 }
 
@@ -321,11 +294,7 @@ fn probe_file(
                     backoff(attempt);
                     continue;
                 }
-                return error_result(
-                    file_id,
-                    None,
-                    &format!("NETWORK_ERROR:{e}"),
-                );
+                return error_result(file_id, None, &format!("NETWORK_ERROR:{e}"));
             }
         }
     }
@@ -334,10 +303,7 @@ fn probe_file(
 }
 
 fn retryable(status: StatusCode) -> bool {
-    matches!(
-        status.as_u16(),
-        429 | 500 | 502 | 503 | 504
-    )
+    matches!(status.as_u16(), 429 | 500 | 502 | 503 | 504)
 }
 
 fn backoff(attempt: u32) {
@@ -345,11 +311,7 @@ fn backoff(attempt: u32) {
     thread::sleep(Duration::from_millis(millis));
 }
 
-fn error_result(
-    file_id: &str,
-    status: Option<u16>,
-    message: &str,
-) -> AuditResult {
+fn error_result(file_id: &str, status: Option<u16>, message: &str) -> AuditResult {
     AuditResult {
         file_id: file_id.to_owned(),
         classification: Classification::Error,
@@ -363,13 +325,9 @@ fn percent_encode_path_segment(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for byte in value.bytes() {
         match byte {
-            b'A'..=b'Z'
-            | b'a'..=b'z'
-            | b'0'..=b'9'
-            | b'-'
-            | b'_'
-            | b'.'
-            | b'~' => out.push(byte as char),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char)
+            }
             _ => out.push_str(&format!("%{byte:02X}")),
         }
     }
