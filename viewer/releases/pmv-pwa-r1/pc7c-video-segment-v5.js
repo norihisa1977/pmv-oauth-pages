@@ -1054,7 +1054,7 @@ button.onclick = async () => {
           add("VIDEO_AVC_LEVEL_IDC=" + level);
           add(
             "VIDEO_CANPLAYTYPE_EXACT=" +
-            videoEl.canPlayType('video/mp4; codecs="' + codec + ', mp4a.40.2"')
+            document.createElement("video").canPlayType('video/mp4; codecs="' + codec + ', mp4a.40.2"')
           );
         }
         else {
@@ -1081,7 +1081,7 @@ button.onclick = async () => {
       }
 
       add("VIDEO_MIME_CANDIDATE=" + mime);
-      add("VIDEO_CANPLAYTYPE=" + videoEl.canPlayType(mime));
+      add("VIDEO_CANPLAYTYPE=" + document.createElement("video").canPlayType(mime));
 
       sodium.memzero(probe);
 
