@@ -5,7 +5,7 @@ async function ready(){
  if(readyPromise)return readyPromise;
  readyPromise=(async()=>{
   if(!("serviceWorker" in navigator))throw new Error("VIDEO_SW_UNAVAILABLE");
-  await navigator.serviceWorker.register("./sw-v5.js?v=5",{scope:"./"});
+  await navigator.serviceWorker.register("./sw-v5.js?v=pc7c-r6-20261007a",{scope:"./"});
   await navigator.serviceWorker.ready;
   if(!navigator.serviceWorker.controller){
    await new Promise((resolve,reject)=>{
