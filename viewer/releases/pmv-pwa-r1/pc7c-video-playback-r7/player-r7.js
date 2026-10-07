@@ -5,7 +5,7 @@ async function ready(){
  if(readyPromise)return readyPromise;
  readyPromise=(async()=>{
   if(!("serviceWorker" in navigator))throw new Error("VIDEO_SW_UNAVAILABLE");
-  await navigator.serviceWorker.register("./sw-r7.js",{scope:"./"});
+  await navigator.serviceWorker.register("./sw-r7.js?v=ack2",{scope:"./"});
   await navigator.serviceWorker.ready;
   if(!navigator.serviceWorker.controller){
    await new Promise((resolve,reject)=>{
@@ -19,17 +19,31 @@ async function ready(){
  })();
  return readyPromise;
 }
-navigator.serviceWorker.addEventListener("message",e=>{
- if(e.data?.type==="PMV_VIDEO_SET_RESULT")send("SET_RESULT",e.data);
- if(e.data?.type==="PMV_VIDEO_CLEAR_RESULT")send("CLEAR_RESULT",e.data);
-});
 window.addEventListener("message",async e=>{
  if(e.origin!==location.origin||e.source!==parent)return;
  try{
   await ready(); const sw=navigator.serviceWorker.controller;
-  if(e.data?.type==="PMV_VIDEO_SET")sw.postMessage(e.data,e.data.parts);
-  else if(e.data?.type==="PMV_VIDEO_CLEAR"){video.pause();video.removeAttribute("src");video.load();sw.postMessage({type:"PMV_VIDEO_CLEAR"});}
-  else if(e.data?.type==="PMV_VIDEO_PLAY"){video.src="./virtual-r7.mp4?v="+Date.now();video.load();send("SOURCE_ACTIVE");}
+  if(e.data?.type==="PMV_VIDEO_SET"){
+   const channel=new MessageChannel();
+   const timer=setTimeout(()=>{try{channel.port1.close();}catch(_){} send("ERROR",{message:"VIDEO_SW_ACK_TIMEOUT"});},15000);
+   channel.port1.onmessage=ev=>{
+    clearTimeout(timer);
+    const d=ev.data||{};
+    if(d.type==="PMV_VIDEO_SET_RESULT")send("SET_RESULT",d);
+    else send("ERROR",{message:"VIDEO_SW_ACK_INVALID"});
+    try{channel.port1.close();}catch(_){}
+   };
+   sw.postMessage(e.data,[...e.data.parts,channel.port2]);
+  }
+  else if(e.data?.type==="PMV_VIDEO_CLEAR"){
+   video.pause();video.removeAttribute("src");video.load();
+   const channel=new MessageChannel();
+   channel.port1.onmessage=ev=>{send("CLEAR_RESULT",ev.data||{});try{channel.port1.close();}catch(_){}};
+   sw.postMessage({type:"PMV_VIDEO_CLEAR"},[channel.port2]);
+  }
+  else if(e.data?.type==="PMV_VIDEO_PLAY"){
+   video.src="./virtual-r7.mp4?v="+Date.now();video.load();send("SOURCE_ACTIVE");
+  }
  }catch(err){send("ERROR",{message:String(err?.message||err)});}
 });
 function clearOnExit(){try{video.pause();video.removeAttribute("src");video.load();navigator.serviceWorker.controller?.postMessage({type:"PMV_VIDEO_CLEAR"});}catch(_){}}
