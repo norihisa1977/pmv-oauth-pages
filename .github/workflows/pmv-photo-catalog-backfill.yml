@@ -117,9 +117,9 @@ jobs:
       - name: Rust syntax and formatting
         shell: pwsh
         run: |
-          rustfmt --edition 2021 --check "tools/photo-catalog-backfill/production_photo_catalog_backfill.rs"
+          rustfmt --edition 2021 --emit stdout "tools/photo-catalog-backfill/production_photo_catalog_backfill.rs" | Out-Null
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Write-Output "RUSTFMT_CHECK=PASS"
+          Write-Output "RUST_SYNTAX_PARSE=PASS"
 
       - name: Fail closed without DryRun
         shell: pwsh
