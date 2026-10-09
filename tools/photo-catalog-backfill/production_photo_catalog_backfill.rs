@@ -226,26 +226,32 @@ fn stage_thumbnails(
                     .map_err(|e| format!("read thumbnail plaintext failed: {e}"))?;
 
                 if thumbnail_plaintext.is_empty() {
+                    thumbnail_plaintext.zeroize();
                     return Err(format!("THUMBNAIL_PLAINTEXT_EMPTY={}", row.media_id));
                 }
 
-                let nonce = random_nonce()?;
-                let ciphertext = encrypt_segment(
-                    &media_dek,
-                    &nonce,
-                    &thumbnail_plaintext,
-                    &thumbnail_aad(&row.media_id),
-                )?;
+                let encryption_result = (|| -> Result<(), String> {
+                    let nonce = random_nonce()?;
+                    let ciphertext = encrypt_segment(
+                        &media_dek,
+                        &nonce,
+                        &thumbnail_plaintext,
+                        &thumbnail_aad(&row.media_id),
+                    )?;
 
-                let mut envelope = Vec::with_capacity(AEAD_NONCE_BYTES + ciphertext.len());
-                envelope.extend_from_slice(&nonce);
-                envelope.extend_from_slice(&ciphertext);
+                    let mut envelope = Vec::with_capacity(AEAD_NONCE_BYTES + ciphertext.len());
+                    envelope.extend_from_slice(&nonce);
+                    envelope.extend_from_slice(&ciphertext);
 
-                fs::write(&encrypted_thumb, &envelope)
-                    .map_err(|e| format!("write encrypted thumbnail failed: {e}"))?;
+                    let write_result = fs::write(&encrypted_thumb, &envelope)
+                        .map_err(|e| format!("write encrypted thumbnail failed: {e}"));
+
+                    envelope.zeroize();
+                    write_result
+                })();
 
                 thumbnail_plaintext.zeroize();
-                envelope.zeroize();
+                encryption_result?;
 
                 Ok(())
             })();
