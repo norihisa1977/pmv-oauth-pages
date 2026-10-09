@@ -72,7 +72,10 @@ try {
 
     # Creating a new frame without carrying BitmapMetadata strips EXIF/XMP metadata.
     $cleanFrame = [Windows.Media.Imaging.BitmapFrame]::Create(
-        [Windows.Media.Imaging.BitmapSource]$transformed
+        [Windows.Media.Imaging.BitmapSource]$transformed,
+        $null,
+        $null,
+        $null
     )
 
     $encoder = New-Object Windows.Media.Imaging.JpegBitmapEncoder
