@@ -1,4 +1,4 @@
-# PMV Photo Catalog v0 — SPEC candidate
+# PMV Photo Catalog v0 — ACCEPTED SPEC
 
 Status: ACCEPTED
 Scope: iPhone photo-only Normal Path extension
@@ -120,11 +120,11 @@ No prefetch of full-resolution photo bodies in v0.
 
 Catalog fileId bootstrap remains a separate authority problem.
 
-v0 candidate:
+v0 bootstrap (ACCEPTED):
 - one small bootstrap descriptor distributed with the PWA release containing:
   - catalog_file_id
   - expected vault_id
-  - expected catalog generation floor
+  - exact expected catalog_generation
 
 The descriptor MUST NOT contain secrets.
 
@@ -210,7 +210,7 @@ C14 Catalog fetched by exact fileId; no Drive-wide listing required for browsing
 C15 List rendering decrypts thumbnails only, not all full photos.
 C16 Selecting one photo decrypts only that full photo.
 C17 No persistent plaintext photo/thumbnail/catalog storage on iPhone.
-C18 Catalog generation rollback below accepted floor is rejected.
+C18 Catalog fileId and catalog_generation must exactly match the accepted PWA bootstrap; mismatch is rejected.
 C19 Backfill Evidence records counts and hashes.
 C20 Post-backfill representative iPhone browse/select/display = PASS.
 
