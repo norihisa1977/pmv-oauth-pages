@@ -1,0 +1,92 @@
+name: PMV Photo Catalog Backfill Dry-Run CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/photo-catalog-backfill/**"
+      - ".github/workflows/pmv-photo-catalog-backfill.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-script:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PowerShell parse
+        shell: pwsh
+        run: |
+          $path = "tools/photo-catalog-backfill/Prepare-PmvPhotoCatalogBackfill.ps1"
+          $tokens = $null
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $path),
+              [ref]$tokens,
+              [ref]$errors
+          )
+          if ($errors.Count -ne 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              exit 1
+          }
+          Write-Output "POWERSHELL_PARSE=PASS"
+
+      - name: Fail closed without DryRun
+        shell: pwsh
+        run: |
+          $path = "tools/photo-catalog-backfill/Prepare-PmvPhotoCatalogBackfill.ps1"
+          try {
+              & $path
+              Write-Error "EXPECTED_FAIL_CLOSED_NOT_OBSERVED"
+              exit 1
+          }
+          catch {
+              if ($_.Exception.Message -notlike "*BACKFILL_MUTATION_NOT_AUTHORIZED_USE_DRYRUN*") {
+                  throw
+              }
+          }
+          Write-Output "DRYRUN_GATE=PASS"
+
+      - name: Static mutation boundary
+        shell: pwsh
+        run: |
+          $path = "tools/photo-catalog-backfill/Prepare-PmvPhotoCatalogBackfill.ps1"
+          $text = Get-Content $path -Raw
+
+          $required = @(
+              'PHOTO_CATALOG_BACKFILL_DRYRUN=PASS',
+              'MEDIA_BODY_DECRYPTED=NO',
+              'THUMBNAIL_GENERATED=NO',
+              'CLOUD_UPLOAD_PERFORMED=NO',
+              'PRODUCTION_MUTATION=NO',
+              'CANONICAL_PHOTO_COUNT_MISMATCH',
+              'DUPLICATE_CANONICAL_MEDIA_ID'
+          )
+
+          foreach ($needle in $required) {
+              if (-not $text.Contains($needle)) {
+                  throw "STATIC_REQUIRED_MARKER_MISSING=$needle"
+              }
+          }
+
+          $forbidden = @(
+              'Invoke-RestMethod',
+              'Invoke-WebRequest',
+              'Start-BitsTransfer',
+              'Remove-Item',
+              'Move-Item',
+              'Copy-Item',
+              'Set-Content -Path $recordPath',
+              'Add-Content'
+          )
+
+          foreach ($needle in $forbidden) {
+              if ($text.Contains($needle)) {
+                  throw "STATIC_FORBIDDEN_MUTATION_REFERENCE=$needle"
+              }
+          }
+
+          Write-Output "STATIC_MUTATION_BOUNDARY=PASS"
