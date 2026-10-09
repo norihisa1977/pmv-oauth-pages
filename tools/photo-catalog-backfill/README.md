@@ -41,3 +41,14 @@ PRODUCTION_MUTATION=NO
 ~~~
 
 The mutating backfill implementation is intentionally not enabled until this dry-run passes on the actual Production host.
+
+
+## Host capability gate
+
+Before enabling Production backfill, run the host capability probe. It is read-only and does not decrypt media:
+
+~~~powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\photo-catalog-backfill\Test-PmvPhotoCatalogBackfillHost.ps1
+~~~
+
+The gate requires the current Production photo wrapper/core and an HEIC-capable decode path because the canonical set contains HEIC photos. It reports but does not mutate Production.
