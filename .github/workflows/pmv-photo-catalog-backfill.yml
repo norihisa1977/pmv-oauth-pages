@@ -20,19 +20,94 @@ jobs:
       - name: PowerShell parse
         shell: pwsh
         run: |
-          $path = "tools/photo-catalog-backfill/Prepare-PmvPhotoCatalogBackfill.ps1"
-          $tokens = $null
-          $errors = $null
-          [void][System.Management.Automation.Language.Parser]::ParseFile(
-              (Resolve-Path $path),
-              [ref]$tokens,
-              [ref]$errors
+          $paths = @(
+              "tools/photo-catalog-backfill/Prepare-PmvPhotoCatalogBackfill.ps1",
+              "tools/photo-catalog-backfill/New-PmvPhotoThumbnail.ps1",
+              "tools/photo-catalog-backfill/Install-PmvPhotoCatalogBackfillCore.ps1",
+              "tools/photo-catalog-backfill/Run-PmvPhotoCatalogBackfill.ps1"
           )
-          if ($errors.Count -ne 0) {
-              $errors | ForEach-Object { Write-Error $_.Message }
-              exit 1
+          foreach ($path in $paths) {
+              $tokens = $null
+              $errors = $null
+              [void][System.Management.Automation.Language.Parser]::ParseFile(
+                  (Resolve-Path $path),
+                  [ref]$tokens,
+                  [ref]$errors
+              )
+              if ($errors.Count -ne 0) {
+                  $errors | ForEach-Object { Write-Error "$path :: $($_.Message)" }
+                  exit 1
+              }
           }
           Write-Output "POWERSHELL_PARSE=PASS"
+
+      - name: Actual runner fail closed without Execute
+        shell: pwsh
+        run: |
+          $path = "tools/photo-catalog-backfill/Run-PmvPhotoCatalogBackfill.ps1"
+          try {
+              & $path
+              Write-Error "EXPECTED_EXECUTE_GATE_NOT_OBSERVED"
+              exit 1
+          }
+          catch {
+              if ($_.Exception.Message -notlike "*BACKFILL_MUTATION_NOT_AUTHORIZED_USE_EXECUTE*") {
+                  throw
+              }
+          }
+          Write-Output "ACTUAL_EXECUTE_GATE=PASS"
+
+      - name: Backfill implementation security contract
+        shell: pwsh
+        run: |
+          $runner = Get-Content "tools/photo-catalog-backfill/Run-PmvPhotoCatalogBackfill.ps1" -Raw
+          $core = Get-Content "tools/photo-catalog-backfill/production_photo_catalog_backfill.rs" -Raw
+          $thumb = Get-Content "tools/photo-catalog-backfill/New-PmvPhotoThumbnail.ps1" -Raw
+
+          $runnerRequired = @(
+              'BACKFILL_MUTATION_NOT_AUTHORIZED_USE_EXECUTE',
+              'https://www.googleapis.com/auth/drive.file',
+              'BROAD_DRIVE_SCOPE_FORBIDDEN',
+              'google_refresh_token_v1',
+              'encrypt-catalog-from-env',
+              'PMV_CATALOG_THUMBNAIL_FILE_IDS_JSON',
+              'ORIGINAL_PRODUCTION_MEDIA_CHANGED',
+              'BACKFILL_NEW_OBJECT_ROLLBACK=PASS',
+              'CATALOG_PLAINTEXT_PERSISTED=NO',
+              'PRODUCTION_MUTATION=CATALOG_AND_ENCRYPTED_THUMBNAILS_ONLY'
+          )
+          foreach ($needle in $runnerRequired) {
+              if (-not $runner.Contains($needle)) { throw "RUNNER_REQUIRED_MARKER_MISSING=$needle" }
+          }
+
+          foreach ($forbidden in @('vault_kek.dpapi','PMV_VAULT_KEK_HEX')) {
+              if ($runner.Contains($forbidden)) { throw "RUNNER_LEGACY_KEK_REFERENCE=$forbidden" }
+              if ($core.Contains($forbidden)) { throw "CORE_LEGACY_KEK_REFERENCE=$forbidden" }
+          }
+
+          $coreRequired = @(
+              'unlock_production_kek_interactive',
+              'unwrap_media_dek',
+              'restore_photo_local',
+              'object_role=thumbnail',
+              'thumbnail_format=PMV-PHOTO-THUMBNAIL-V0',
+              'encrypt-catalog-from-env',
+              'CATALOG_PLAINTEXT_PERSISTED=NO',
+              'PMV_CATALOG_THUMBNAIL_FILE_IDS_JSON'
+          )
+          foreach ($needle in $coreRequired) {
+              if (-not $core.Contains($needle)) { throw "CORE_REQUIRED_MARKER_MISSING=$needle" }
+          }
+
+          foreach ($forbidden in @('StageManifest','catalog_plain_path','thumbnail-stage.json')) {
+              if ($core.Contains($forbidden)) { throw "CORE_PLAINTEXT_PERSISTENCE_REFERENCE=$forbidden" }
+          }
+
+          foreach ($needle in @('MaxDimension = 320','JpegBitmapEncoder','BitmapFrame]::Create')) {
+              if (-not $thumb.Contains($needle)) { throw "THUMBNAIL_REQUIRED_MARKER_MISSING=$needle" }
+          }
+
+          Write-Output "BACKFILL_SECURITY_CONTRACT=PASS"
 
       - name: Fail closed without DryRun
         shell: pwsh
