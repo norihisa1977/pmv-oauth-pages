@@ -341,43 +341,53 @@ fn encrypt_catalog_from_env(
         return Err("CATALOG_GENERATION_INVALID".into());
     }
 
+    if encrypted_path.exists() {
+        return Err("CATALOG_ENCRYPTED_OUTPUT_ALREADY_EXISTS".into());
+    }
+
     let rows = read_canonical_photo_rows(production_dir)?;
     let thumbnail_ids = read_thumbnail_ids_from_env()?;
-
     let created_at = env::var("PMV_CATALOG_CREATED_AT")
         .map_err(|_| "CATALOG_CREATED_AT_ENV_MISSING".to_string())?;
 
-    let entries: Vec<serde_json::Value> = rows
-        .iter()
-        .enumerate()
-        .map(|(ordinal, row)| {
-            serde_json::json!({
-                "ordinal": ordinal,
-                "media_id": row.media_id.clone(),
-                "manifest_file_id": row.manifest_file_id.clone(),
-                "photo_file_id": row.media_file_id.clone(),
-                "thumbnail_file_id": thumbnail_ids[ordinal].clone(),
-                "capture_time": serde_json::Value::Null
-            })
-        })
-        .collect();
-
-    let catalog = serde_json::json!({
-        "format": CATALOG_FORMAT,
-        "vault_id": VAULT_ID,
-        "generation": generation,
-        "photo_count": PHOTO_COUNT,
-        "created_at": created_at,
-        "entries": entries
-    });
-
-    let mut catalog_plain =
-        serde_json::to_vec(&catalog).map_err(|e| format!("serialize catalog failed: {e}"))?;
-
     let mut vault_kek = unlock_production_kek_interactive()?;
-    let mut catalog_dek = generate_key()?;
+    let mut catalog_dek = match generate_key() {
+        Ok(key) => key,
+        Err(e) => {
+            vault_kek.zeroize();
+            return Err(e);
+        }
+    };
+    let mut catalog_plain = Vec::<u8>::new();
 
     let operation = (|| -> Result<CatalogEncryptedPackage, String> {
+        let entries: Vec<serde_json::Value> = rows
+            .iter()
+            .enumerate()
+            .map(|(ordinal, row)| {
+                serde_json::json!({
+                    "ordinal": ordinal,
+                    "media_id": row.media_id.clone(),
+                    "manifest_file_id": row.manifest_file_id.clone(),
+                    "photo_file_id": row.media_file_id.clone(),
+                    "thumbnail_file_id": thumbnail_ids[ordinal].clone(),
+                    "capture_time": serde_json::Value::Null
+                })
+            })
+            .collect();
+
+        let catalog = serde_json::json!({
+            "format": CATALOG_FORMAT,
+            "vault_id": VAULT_ID,
+            "generation": generation,
+            "photo_count": PHOTO_COUNT,
+            "created_at": created_at,
+            "entries": entries
+        });
+
+        catalog_plain =
+            serde_json::to_vec(&catalog).map_err(|e| format!("serialize catalog failed: {e}"))?;
+
         let wrap_nonce = random_nonce()?;
         let wrapped_ciphertext = encrypt_segment(
             &vault_kek,
@@ -414,10 +424,6 @@ fn encrypt_catalog_from_env(
     catalog_plain.zeroize();
 
     let package = operation?;
-
-    if encrypted_path.exists() {
-        return Err("CATALOG_ENCRYPTED_OUTPUT_ALREADY_EXISTS".into());
-    }
 
     fs::write(
         encrypted_path,
