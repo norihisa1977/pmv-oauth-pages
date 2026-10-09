@@ -8,7 +8,7 @@ use std::{
     collections::BTreeMap,
     env,
     fs,
-    path::{Path, PathBuf},
+    path::{Path},
     process::Command,
 };
 use zeroize::Zeroize;
@@ -38,33 +38,6 @@ struct ProductionPhotoRecord {
     wrapped_media_dek: WrappedKeyV1,
     manifest_object_name: String,
     photo_object_name: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct StageEntry {
-    ordinal: usize,
-    media_id: String,
-    manifest_file_id: String,
-    photo_file_id: String,
-    encrypted_thumbnail_path: String,
-}
-
-#[derive(Debug, Serialize)]
-struct StageManifest {
-    format: String,
-    vault_id: String,
-    generation: u64,
-    photo_count: usize,
-    entries: Vec<StageEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CatalogPlain {
-    format: String,
-    vault_id: String,
-    generation: u64,
-    photo_count: usize,
-    entries: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -169,7 +142,6 @@ fn stage_thumbnails(
     fs::create_dir_all(&plain_dir).map_err(|e| e.to_string())?;
 
     let mut vault_kek = unlock_production_kek_interactive()?;
-    let mut entries = Vec::with_capacity(PHOTO_COUNT);
 
     let operation = (|| -> Result<(), String> {
         for (ordinal, row) in rows.iter().enumerate() {
@@ -205,7 +177,7 @@ fn stage_thumbnails(
 
             let plain_photo = plain_dir.join(format!("{}-source.bin", row.media_id));
             let plain_thumb = plain_dir.join(format!("{}-thumb.jpg", row.media_id));
-            let encrypted_thumb = encrypted_dir.join(format!("{}.thumb.enc", row.media_id));
+            let encrypted_thumb = encrypted_dir.join(format!("{ordinal:06}.thumb.enc"));
 
             let _ = fs::remove_file(&plain_photo);
             let _ = fs::remove_file(&plain_thumb);
@@ -288,14 +260,6 @@ fn stage_thumbnails(
                 return Err(format!("TEMP_PLAINTEXT_REMAIN={}", row.media_id));
             }
 
-            entries.push(StageEntry {
-                ordinal,
-                media_id: row.media_id.clone(),
-                manifest_file_id: row.manifest_file_id.clone(),
-                photo_file_id: row.media_file_id.clone(),
-                encrypted_thumbnail_path: encrypted_thumb.to_string_lossy().into_owned(),
-            });
-
             println!(
                 "THUMBNAIL_STAGE_PASS={}/{} MEDIA_ID={}",
                 ordinal + 1,
@@ -316,54 +280,93 @@ fn stage_thumbnails(
 
     let _ = fs::remove_dir_all(&plain_dir);
 
-    if entries.len() != PHOTO_COUNT {
-        return Err("THUMBNAIL_STAGE_COUNT_MISMATCH".into());
+    let encrypted_count = fs::read_dir(&encrypted_dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().extension().and_then(|x| x.to_str()) == Some("enc"))
+        .count();
+
+    if encrypted_count != PHOTO_COUNT {
+        return Err(format!("THUMBNAIL_STAGE_COUNT_MISMATCH={encrypted_count}"));
     }
-
-    let manifest = StageManifest {
-        format: "PMV-PHOTO-CATALOG-BACKFILL-STAGE-V0".into(),
-        vault_id: VAULT_ID.into(),
-        generation,
-        photo_count: PHOTO_COUNT,
-        entries,
-    };
-
-    let manifest_path = work_dir.join("thumbnail-stage.json");
-    fs::write(
-        &manifest_path,
-        serde_json::to_vec_pretty(&manifest).map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
 
     println!("PHOTO_CATALOG_BACKFILL_STAGE=PASS");
     println!("PHOTO_COUNT={PHOTO_COUNT}");
     println!("THUMBNAIL_ENCRYPTED={PHOTO_COUNT}");
     println!("TEMP_PLAINTEXT_REMAIN=0");
-    println!("STAGE_MANIFEST={}", manifest_path.display());
 
     Ok(())
 }
 
-fn encrypt_catalog(
-    catalog_plain_path: &Path,
+fn read_thumbnail_ids_from_env() -> Result<Vec<String>, String> {
+    let raw = env::var("PMV_CATALOG_THUMBNAIL_FILE_IDS_JSON")
+        .map_err(|_| "CATALOG_THUMBNAIL_FILE_IDS_ENV_MISSING".to_string())?;
+
+    let ids: Vec<String> =
+        serde_json::from_str(&raw).map_err(|e| format!("thumbnail file ID JSON invalid: {e}"))?;
+
+    if ids.len() != PHOTO_COUNT {
+        return Err(format!(
+            "THUMBNAIL_FILE_ID_COUNT_MISMATCH={} EXPECTED={PHOTO_COUNT}",
+            ids.len()
+        ));
+    }
+
+    if ids.iter().any(|id| id.trim().is_empty()) {
+        return Err("THUMBNAIL_FILE_ID_EMPTY".into());
+    }
+
+    let mut unique = std::collections::BTreeSet::new();
+    for id in &ids {
+        if !unique.insert(id.clone()) {
+            return Err(format!("DUPLICATE_THUMBNAIL_FILE_ID={id}"));
+        }
+    }
+
+    Ok(ids)
+}
+
+fn encrypt_catalog_from_env(
+    production_dir: &Path,
     encrypted_path: &Path,
     generation: u64,
 ) -> Result<(), String> {
-    let mut catalog_plain = fs::read(catalog_plain_path)
-        .map_err(|e| format!("read catalog plaintext failed: {e}"))?;
-
-    let parsed: CatalogPlain =
-        serde_json::from_slice(&catalog_plain).map_err(|e| format!("catalog JSON invalid: {e}"))?;
-
-    if parsed.format != CATALOG_FORMAT
-        || parsed.vault_id != VAULT_ID
-        || parsed.generation != generation
-        || parsed.photo_count != PHOTO_COUNT
-        || parsed.entries.len() != PHOTO_COUNT
-    {
-        catalog_plain.zeroize();
-        return Err("CATALOG_PLAINTEXT_AUTHORITY_MISMATCH".into());
+    if generation == 0 {
+        return Err("CATALOG_GENERATION_INVALID".into());
     }
+
+    let rows = read_canonical_photo_rows(production_dir)?;
+    let thumbnail_ids = read_thumbnail_ids_from_env()?;
+
+    let created_at = env::var("PMV_CATALOG_CREATED_AT")
+        .map_err(|_| "CATALOG_CREATED_AT_ENV_MISSING".to_string())?;
+
+    let entries: Vec<serde_json::Value> = rows
+        .iter()
+        .enumerate()
+        .map(|(ordinal, row)| {
+            serde_json::json!({
+                "ordinal": ordinal,
+                "media_id": row.media_id,
+                "manifest_file_id": row.manifest_file_id,
+                "photo_file_id": row.media_file_id,
+                "thumbnail_file_id": thumbnail_ids[ordinal],
+                "capture_time": serde_json::Value::Null
+            })
+        })
+        .collect();
+
+    let catalog = serde_json::json!({
+        "format": CATALOG_FORMAT,
+        "vault_id": VAULT_ID,
+        "generation": generation,
+        "photo_count": PHOTO_COUNT,
+        "created_at": created_at,
+        "entries": entries
+    });
+
+    let mut catalog_plain =
+        serde_json::to_vec(&catalog).map_err(|e| format!("serialize catalog failed: {e}"))?;
 
     let mut vault_kek = unlock_production_kek_interactive()?;
     let mut catalog_dek = generate_key()?;
@@ -405,6 +408,11 @@ fn encrypt_catalog(
     catalog_plain.zeroize();
 
     let package = operation?;
+
+    if encrypted_path.exists() {
+        return Err("CATALOG_ENCRYPTED_OUTPUT_ALREADY_EXISTS".into());
+    }
+
     fs::write(
         encrypted_path,
         serde_json::to_vec_pretty(&package).map_err(|e| e.to_string())?,
@@ -412,6 +420,7 @@ fn encrypt_catalog(
     .map_err(|e| e.to_string())?;
 
     println!("PHOTO_CATALOG_ENCRYPT=PASS");
+    println!("CATALOG_PLAINTEXT_PERSISTED=NO");
     println!("CATALOG_GENERATION={generation}");
     println!("CATALOG_ENTRY_COUNT={PHOTO_COUNT}");
     println!("CATALOG_ENCRYPTED_PATH={}", encrypted_path.display());
@@ -435,15 +444,15 @@ fn run() -> Result<(), String> {
                 generation,
             )
         }
-        Some("encrypt-catalog") if args.len() == 5 => {
+        Some("encrypt-catalog-from-env") if args.len() == 5 => {
             let generation = args[4]
                 .parse::<u64>()
                 .map_err(|_| "CATALOG_GENERATION_INVALID".to_string())?;
 
-            encrypt_catalog(Path::new(&args[2]), Path::new(&args[3]), generation)
+            encrypt_catalog_from_env(Path::new(&args[2]), Path::new(&args[3]), generation)
         }
         _ => Err(
-            "usage: production_photo_catalog_backfill stage-thumbnails <production_dir> <work_dir> <thumbnail_script> <generation> | encrypt-catalog <catalog_plain_json> <catalog_encrypted_json> <generation>"
+            "usage: production_photo_catalog_backfill stage-thumbnails <production_dir> <work_dir> <thumbnail_script> <generation> | encrypt-catalog-from-env <production_dir> <catalog_encrypted_json> <generation>"
                 .into(),
         ),
     }
