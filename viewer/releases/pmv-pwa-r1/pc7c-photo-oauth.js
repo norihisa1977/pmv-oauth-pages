@@ -92,8 +92,16 @@ button.onclick = async () => {
 
             report(out);
 
+            const next =
+              new URLSearchParams(location.search).get("next");
+
+            const target =
+              next === "visibility-audit"
+                ? "./pc7c-drive-visibility-audit.html"
+                : "./pc7c-photo-view.html";
+
             location.replace(
-              "./pc7c-photo-view.html"
+              target
             );
           }
           catch (e) {
