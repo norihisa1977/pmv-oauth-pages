@@ -131,6 +131,24 @@ jobs:
 
           Write-Output "BACKFILL_SECURITY_CONTRACT=PASS"
 
+      - name: Shell fallback compile contract
+        shell: pwsh
+        run: |
+          $input = Join-Path $env:RUNNER_TEMP "pmv-shell-fallback-probe.txt"
+          $output = Join-Path $env:RUNNER_TEMP "pmv-shell-fallback-probe.jpg"
+          "not-an-image" | Set-Content -LiteralPath $input -Encoding ascii
+
+          try {
+              & "tools/photo-catalog-backfill/New-PmvPhotoThumbnail.ps1" -InputPath $input -OutputPath $output
+          }
+          catch {
+              $message = $_.Exception.Message
+              if ($message -like "*Bitmap*not found*" -or $message -like "*System.Drawing*not found*") {
+                  throw
+              }
+              Write-Output "SHELL_FALLBACK_COMPILE=PASS"
+          }
+
       - name: Rust syntax and formatting
         shell: pwsh
         run: |
