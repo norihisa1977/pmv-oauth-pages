@@ -90,3 +90,134 @@ jobs:
           }
 
           Write-Output "STATIC_MUTATION_BOUNDARY=PASS"
+
+
+      - name: Synthetic 392-photo dry-run
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "pmv-production-fixture"
+          $migration = Join-Path $root "migration"
+          $mediaRoot = Join-Path $root "media"
+          New-Item -ItemType Directory -Force -Path $migration,$mediaRoot | Out-Null
+
+          @{
+              format_version = 1
+              vault_id = "pmv-v1-production"
+              key_generation = 1
+              recovery_file = "fixture"
+          } | ConvertTo-Json -Compress |
+              Set-Content (Join-Path $root "production_state.json") -Encoding UTF8
+
+          $cloud = New-Object System.Collections.Generic.List[string]
+
+          0..391 | ForEach-Object {
+              $n = $_
+              $mediaId = "photo-fixture-{0:D3}" -f $n
+              $mediaDir = Join-Path $mediaRoot $mediaId
+              New-Item -ItemType Directory -Force -Path $mediaDir | Out-Null
+
+              $manifestName = "manifest-{0:D3}.manifest" -f $n
+              $photoName = "photo-{0:D3}.blob" -f $n
+              $manifestPath = Join-Path $mediaDir $manifestName
+              $photoPath = Join-Path $mediaDir $photoName
+
+              [IO.File]::WriteAllBytes($manifestPath, [byte[]](1,2,3,4))
+              [IO.File]::WriteAllBytes($photoPath, [byte[]](5,6,7,8,9))
+
+              @{
+                  format_version = 1
+                  vault_id = "pmv-v1-production"
+                  media_id = $mediaId
+                  key_generation = 1
+                  wrapped_media_dek = @{
+                      nonce = "fixture"
+                      ciphertext = "fixture"
+                  }
+                  manifest_object_name = $manifestName
+                  photo_object_name = $photoName
+              } | ConvertTo-Json -Compress |
+                  Set-Content (Join-Path $mediaDir "production_record.json") -Encoding UTF8
+
+              $cloud.Add((@{
+                  status = "CLOUD_VERIFIED"
+                  media_id = $mediaId
+                  kind = "PHOTO"
+                  manifest_file_id = "manifest-file-id-{0:D3}" -f $n
+                  media_file_id = "photo-file-id-{0:D3}" -f $n
+                  manifest_bytes = 4
+                  media_bytes = 5
+                  verified_at = "2026-10-10T00:00:00Z"
+              } | ConvertTo-Json -Compress))
+          }
+
+          $cloud | Set-Content (Join-Path $migration "full_media_cloud_state.jsonl") -Encoding UTF8
+
+          $evidence = Join-Path $env:RUNNER_TEMP "pmv-photo-catalog-dry-run-evidence"
+          $output = & "tools/photo-catalog-backfill/Prepare-PmvPhotoCatalogBackfill.ps1" -DryRun -ProductionDir $root -EvidenceDir $evidence
+          $output | Write-Output
+
+          $required = @(
+              "PHOTO_CATALOG_BACKFILL_DRYRUN=PASS",
+              "PHOTO_COUNT=392",
+              "UNIQUE_MANIFEST_FILE_ID_COUNT=392",
+              "UNIQUE_PHOTO_FILE_ID_COUNT=392",
+              "MEDIA_BODY_DECRYPTED=NO",
+              "THUMBNAIL_GENERATED=NO",
+              "CLOUD_UPLOAD_PERFORMED=NO",
+              "PRODUCTION_MUTATION=NO"
+          )
+
+          foreach ($needle in $required) {
+              if (-not ($output -contains $needle)) {
+                  throw "SYNTHETIC_ACCEPTANCE_MISSING=$needle"
+              }
+          }
+
+          $inventoryPath = Join-Path $evidence "photo-catalog-backfill-dry-run-inventory.json"
+          $evidencePath = Join-Path $evidence "photo-catalog-backfill-dry-run-evidence.json"
+
+          if (-not (Test-Path $inventoryPath)) { throw "SYNTHETIC_INVENTORY_MISSING" }
+          if (-not (Test-Path $evidencePath)) { throw "SYNTHETIC_EVIDENCE_MISSING" }
+
+          $inventory = @(Get-Content $inventoryPath -Raw | ConvertFrom-Json)
+          if ($inventory.Count -ne 392) {
+              throw "SYNTHETIC_INVENTORY_COUNT_MISMATCH=$($inventory.Count)"
+          }
+
+          $ev = Get-Content $evidencePath -Raw | ConvertFrom-Json
+          if (-not $ev.dry_run) { throw "SYNTHETIC_DRYRUN_FLAG_FALSE" }
+          if ($ev.production_mutation) { throw "SYNTHETIC_MUTATION_FLAG_TRUE" }
+          if ($ev.media_body_decrypted) { throw "SYNTHETIC_DECRYPT_FLAG_TRUE" }
+          if ($ev.thumbnail_generated) { throw "SYNTHETIC_THUMBNAIL_FLAG_TRUE" }
+          if ($ev.cloud_upload_performed) { throw "SYNTHETIC_UPLOAD_FLAG_TRUE" }
+
+          Write-Output "SYNTHETIC_392_PHOTO_DRYRUN=PASS"
+
+      - name: Negative count mismatch fails closed
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP "pmv-production-fixture-negative"
+          $migration = Join-Path $root "migration"
+          $mediaRoot = Join-Path $root "media"
+          New-Item -ItemType Directory -Force -Path $migration,$mediaRoot | Out-Null
+
+          @{
+              format_version = 1
+              vault_id = "pmv-v1-production"
+              key_generation = 1
+          } | ConvertTo-Json -Compress |
+              Set-Content (Join-Path $root "production_state.json") -Encoding UTF8
+
+          "" | Set-Content (Join-Path $migration "full_media_cloud_state.jsonl") -Encoding UTF8
+
+          try {
+              & "tools/photo-catalog-backfill/Prepare-PmvPhotoCatalogBackfill.ps1" -DryRun -ProductionDir $root
+              throw "EXPECTED_COUNT_MISMATCH_NOT_OBSERVED"
+          }
+          catch {
+              if ($_.Exception.Message -notlike "*CANONICAL_PHOTO_COUNT_MISMATCH=0*") {
+                  throw
+              }
+          }
+
+          Write-Output "NEGATIVE_COUNT_MISMATCH=PASS"
