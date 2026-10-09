@@ -214,7 +214,9 @@ try {
 
     if ($thumbnailIds.Count -ne $expectedPhotoCount) { throw "THUMBNAIL_UPLOAD_COUNT_MISMATCH=$($thumbnailIds.Count)" }
 
-    $thumbnailIdsJson = @($thumbnailIds) | ConvertTo-Json -Compress
+    $thumbnailIdsJson = @(
+        $thumbnailIds | ForEach-Object { [string]$_ }
+    ) | ConvertTo-Json -Compress
     if ($thumbnailIdsJson.Length -gt 30000) { throw "THUMBNAIL_FILE_ID_ENV_TOO_LARGE=$($thumbnailIdsJson.Length)" }
 
     $env:PMV_CATALOG_THUMBNAIL_FILE_IDS_JSON = $thumbnailIdsJson
