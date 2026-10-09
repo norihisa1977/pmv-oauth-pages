@@ -187,10 +187,18 @@ if (-not (Test-Path -LiteralPath $productionStatePath -PathType Leaf)) {
 }
 
 $productionState = Get-Content -LiteralPath $productionStatePath -Raw | ConvertFrom-Json
-$recoveryFilePath = [string]$productionState.recovery_file
+$recoveryFilePath = $null
 
-if ([string]::IsNullOrWhiteSpace($recoveryFilePath) -or -not (Test-Path -LiteralPath $recoveryFilePath -PathType Leaf)) {
-    throw "PRODUCTION_RECOVERY_FILE_MISSING"
+if ($productionState.PSObject.Properties.Name -contains "recovery_file") {
+    $recoveryFilePath = [string]$productionState.recovery_file
+}
+
+if ([string]::IsNullOrWhiteSpace($recoveryFilePath)) {
+    $recoveryFilePath = "D:\pmv-v1-recovery.json"
+}
+
+if (-not (Test-Path -LiteralPath $recoveryFilePath -PathType Leaf)) {
+    throw "PRODUCTION_RECOVERY_FILE_MISSING=$recoveryFilePath"
 }
 
 $normalAccessHashBefore = (Get-FileHash -LiteralPath $normalAccessKeyPath -Algorithm SHA256).Hash.ToLower()
