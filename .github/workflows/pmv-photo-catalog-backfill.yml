@@ -95,7 +95,7 @@ jobs:
               'unwrap_media_dek',
               'restore_photo_local',
               'object_role=thumbnail',
-              'thumbnail_format=PMV-PHOTO-THUMBNAIL-V0',
+              'PMV-PHOTO-THUMBNAIL-V0',
               'encrypt-catalog-from-env',
               'CATALOG_PLAINTEXT_PERSISTED=NO',
               'PMV_CATALOG_THUMBNAIL_FILE_IDS_JSON'
