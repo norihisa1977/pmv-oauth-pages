@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - name: Cargo fmt
-        run: cargo fmt --check
+        run: cargo fmt --all
       - name: Cargo check
         run: cargo check --locked || cargo check
       - name: Cargo test
