@@ -347,10 +347,10 @@ fn encrypt_catalog_from_env(
         .map(|(ordinal, row)| {
             serde_json::json!({
                 "ordinal": ordinal,
-                "media_id": row.media_id,
-                "manifest_file_id": row.manifest_file_id,
-                "photo_file_id": row.media_file_id,
-                "thumbnail_file_id": thumbnail_ids[ordinal],
+                "media_id": row.media_id.clone(),
+                "manifest_file_id": row.manifest_file_id.clone(),
+                "photo_file_id": row.media_file_id.clone(),
+                "thumbnail_file_id": thumbnail_ids[ordinal].clone(),
                 "capture_time": serde_json::Value::Null
             })
         })
