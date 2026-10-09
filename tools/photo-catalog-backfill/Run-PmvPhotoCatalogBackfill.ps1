@@ -80,7 +80,9 @@ function Get-PmvDriveAccessToken {
         if ([string]$tokenInfo.aud -ne $ClientId) { throw "DRIVE_OAUTH_AUDIENCE_MISMATCH" }
 
         $scopes = @(([string]$tokenInfo.scope -split "\s+") | Where-Object { $_ })
-        if ($scopes -notcontains "https://www.googleapis.com/auth/drive.file") { throw "DRIVE_FILE_SCOPE_MISSING" }
+        if ($scopes.Count -ne 1 -or $scopes[0] -ne "https://www.googleapis.com/auth/drive.file") {
+            throw "DRIVE_SCOPE_NOT_EXACT_DRIVE_FILE=$([string]$tokenInfo.scope)"
+        }
 
         foreach ($forbiddenScope in @("https://www.googleapis.com/auth/drive","https://www.googleapis.com/auth/drive.readonly")) {
             if ($scopes -contains $forbiddenScope) { throw "BROAD_DRIVE_SCOPE_FORBIDDEN=$forbiddenScope" }
@@ -173,6 +175,26 @@ $thumbnailIds = New-Object System.Collections.Generic.List[string]
 $thumbnailHashes = New-Object System.Collections.Generic.List[string]
 $catalogResult = $null
 $rollbackFailures = New-Object System.Collections.Generic.List[string]
+$normalAccessKeyPath = Join-Path $windowsDir "normal_access_key_file.dpapi"
+$productionStatePath = Join-Path $ProductionDir "production_state.json"
+
+if (-not (Test-Path -LiteralPath $normalAccessKeyPath -PathType Leaf)) {
+    throw "NORMAL_ACCESS_KEY_FILE_MISSING"
+}
+
+if (-not (Test-Path -LiteralPath $productionStatePath -PathType Leaf)) {
+    throw "PRODUCTION_STATE_FILE_MISSING"
+}
+
+$productionState = Get-Content -LiteralPath $productionStatePath -Raw | ConvertFrom-Json
+$recoveryFilePath = [string]$productionState.recovery_file
+
+if ([string]::IsNullOrWhiteSpace($recoveryFilePath) -or -not (Test-Path -LiteralPath $recoveryFilePath -PathType Leaf)) {
+    throw "PRODUCTION_RECOVERY_FILE_MISSING"
+}
+
+$normalAccessHashBefore = (Get-FileHash -LiteralPath $normalAccessKeyPath -Algorithm SHA256).Hash.ToLower()
+$recoveryHashBefore = (Get-FileHash -LiteralPath $recoveryFilePath -Algorithm SHA256).Hash.ToLower()
 
 New-Item -ItemType Directory -Path $workDir -Force | Out-Null
 
@@ -246,6 +268,17 @@ try {
     if ([string]$preEvidence.production_state_sha256 -ne [string]$postEvidence.production_state_sha256) { throw "PRODUCTION_STATE_CHANGED" }
     if ([string]$preEvidence.full_media_cloud_state_sha256 -ne [string]$postEvidence.full_media_cloud_state_sha256) { throw "CANONICAL_CLOUD_STATE_CHANGED" }
 
+    $normalAccessHashAfter = (Get-FileHash -LiteralPath $normalAccessKeyPath -Algorithm SHA256).Hash.ToLower()
+    $recoveryHashAfter = (Get-FileHash -LiteralPath $recoveryFilePath -Algorithm SHA256).Hash.ToLower()
+
+    if ($normalAccessHashBefore -ne $normalAccessHashAfter) {
+        throw "NORMAL_ACCESS_AUTHORITY_CHANGED"
+    }
+
+    if ($recoveryHashBefore -ne $recoveryHashAfter) {
+        throw "RECOVERY_AUTHORITY_CHANGED"
+    }
+
     $aggregateText = ($thumbnailHashes -join [Environment]::NewLine) + [Environment]::NewLine
     $aggregateBytes = [Text.Encoding]::UTF8.GetBytes($aggregateText)
     $sha = [Security.Cryptography.SHA256]::Create()
@@ -283,6 +316,10 @@ try {
         original_manifest_modified = $false
         production_state_modified = $false
         canonical_cloud_state_modified = $false
+        normal_access_wrapper_sha256_before = $normalAccessHashBefore
+        normal_access_wrapper_sha256_after = $normalAccessHashAfter
+        recovery_file_sha256_before = $recoveryHashBefore
+        recovery_file_sha256_after = $recoveryHashAfter
         production_kek_changed = $false
         recovery_authority_changed = $false
         oauth_scope = "https://www.googleapis.com/auth/drive.file"
@@ -304,6 +341,8 @@ try {
     Write-Output "MEDIA_BODY_PERSISTED=NO"
     Write-Output "TEMP_PLAINTEXT_REMAIN=0"
     Write-Output "ORIGINAL_PRODUCTION_MEDIA_UNCHANGED=PASS"
+    Write-Output "NORMAL_ACCESS_AUTHORITY_UNCHANGED=PASS"
+    Write-Output "RECOVERY_AUTHORITY_UNCHANGED=PASS"
     Write-Output "OAUTH_SCOPE=drive.file"
     Write-Output "CATALOG_FILE_ID=$($catalogResult.id)"
     Write-Output "CATALOG_GENERATION=$Generation"
