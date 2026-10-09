@@ -29,7 +29,8 @@ jobs:
               "tools/photo-catalog-backfill/Prepare-PmvPhotoCatalogBackfill.ps1",
               "tools/photo-catalog-backfill/New-PmvPhotoThumbnail.ps1",
               "tools/photo-catalog-backfill/Install-PmvPhotoCatalogBackfillCore.ps1",
-              "tools/photo-catalog-backfill/Run-PmvPhotoCatalogBackfill.ps1"
+              "tools/photo-catalog-backfill/Run-PmvPhotoCatalogBackfill.ps1",
+              "tools/photo-catalog-backfill/Invoke-PmvPhotoCatalogBackfill.ps1"
           )
           foreach ($path in $paths) {
               $tokens = $null
@@ -45,6 +46,22 @@ jobs:
               }
           }
           Write-Output "POWERSHELL_PARSE=PASS"
+
+      - name: Bootstrap fail closed without Execute
+        shell: pwsh
+        run: |
+          $path = "tools/photo-catalog-backfill/Invoke-PmvPhotoCatalogBackfill.ps1"
+          try {
+              & $path
+              Write-Error "EXPECTED_BOOTSTRAP_EXECUTE_GATE_NOT_OBSERVED"
+              exit 1
+          }
+          catch {
+              if ($_.Exception.Message -notlike "*BACKFILL_BOOTSTRAP_NOT_AUTHORIZED_USE_EXECUTE*") {
+                  throw
+              }
+          }
+          Write-Output "BOOTSTRAP_EXECUTE_GATE=PASS"
 
       - name: Actual runner fail closed without Execute
         shell: pwsh
