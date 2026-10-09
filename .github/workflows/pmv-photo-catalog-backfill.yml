@@ -109,6 +109,13 @@ jobs:
 
           Write-Output "BACKFILL_SECURITY_CONTRACT=PASS"
 
+      - name: Rust syntax and formatting
+        shell: pwsh
+        run: |
+          rustfmt --edition 2021 --check "tools/photo-catalog-backfill/production_photo_catalog_backfill.rs"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Output "RUSTFMT_CHECK=PASS"
+
       - name: Fail closed without DryRun
         shell: pwsh
         run: |
