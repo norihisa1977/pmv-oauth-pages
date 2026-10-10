@@ -1,28 +1,19 @@
 ﻿const WRAPPER_NAME =
   "pmv-pwa-wrapped-kek-v1.json";
 
-const RECORD_FILE_ID =
-  "1G-mMzviIITpUllqnCbnjAlzguo7aX_0w";
-
-const MANIFEST_FILE_ID =
-  "1ulDSALMuVaRxMMffUtc_wczVdxP5ve4D";
-
-const PHOTO_FILE_ID =
-  "1NSXI22fnprN8KH8tv2kh3nGZBD1nnas_";
+const CATALOG_FILE_ID = "1_D0cwTQu6zmqQnL2MVUTjo2NtmD-I2Ol";
+const CATALOG_EXPECTED_BYTES = 453029;
+const CATALOG_EXPECTED_SHA256 = "819216c9de8d94662346ad9ac2bd32a82d634b5a3ebbe17c387a3e71d362ab1e";
+const EXPECTED_CATALOG_GENERATION = 2;
+const EXPECTED_PHOTO_COUNT = 392;
+const CATALOG_FORMAT = "PMV-PHOTO-CATALOG-V1";
+const CATALOG_ENVELOPE_FORMAT = "PMV-PHOTO-CATALOG-ENCRYPTED-V1";
+const THUMBNAIL_FORMAT = "PMV-PHOTO-THUMBNAIL-V0";
 
 const EXPECTED_VAULT_ID =
   "pmv-v1-production";
 
-const EXPECTED_MEDIA_ID =
-  "photo-1790491105139-7e5a45b4a5ac6688";
-
 const EXPECTED_KEY_GENERATION = 1;
-
-const EXPECTED_MANIFEST_OBJECT =
-  "141a1391a9949d1cf4edd1efe61e73d0.manifest";
-
-const EXPECTED_PHOTO_OBJECT =
-  "687d868b331116a4efdca27bd8dda95e.blob";
 
 const reportEl =
   document.getElementById("report");
@@ -36,8 +27,14 @@ const clearButton =
 const passwordEl =
   document.getElementById("password");
 
-const photoEl =
-  document.getElementById("photo");
+const photoEl = document.getElementById("photo");
+const photoGridEl = document.getElementById("photoGrid");
+
+let gallerySodium = null;
+let galleryToken = null;
+let galleryKek = null;
+let galleryCatalog = null;
+let thumbnailUrls = [];
 
 const lines = [];
 const encoder = new TextEncoder();
@@ -714,427 +711,285 @@ window.addEventListener(
   }
 );
 
+
+function galleryDecryptAead(key, nonce, ciphertext, aadText) {
+  return gallerySodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+    null, ciphertext, encoder.encode(aadText), nonce, key
+  );
+}
+
+function catalogWrapAad() {
+  return "pmv:v1:key-wrap\npurpose=photo-catalog-dek\nvault_id=" +
+    EXPECTED_VAULT_ID + "\nsubject_id=" + CATALOG_FORMAT +
+    ":generation:" + EXPECTED_CATALOG_GENERATION +
+    "\nkey_generation=" + EXPECTED_KEY_GENERATION + "\n";
+}
+
+function catalogBodyAad() {
+  return "pmv:photo-catalog:v1\nvault_id=" + EXPECTED_VAULT_ID +
+    "\nformat=" + CATALOG_FORMAT +
+    "\ngeneration=" + EXPECTED_CATALOG_GENERATION + "\n";
+}
+
+function mediaDekAad(entry) {
+  return "pmv:v1:key-wrap\npurpose=media-dek\nvault_id=" +
+    EXPECTED_VAULT_ID + "\nsubject_id=" + entry.media_id +
+    "\nkey_generation=" + EXPECTED_KEY_GENERATION + "\n";
+}
+
+function thumbnailAad(entry) {
+  return "pmv:photo-thumbnail:v0\nvault_id=" + EXPECTED_VAULT_ID +
+    "\nmedia_id=" + entry.media_id +
+    "\nobject_role=thumbnail\nthumbnail_format=" + THUMBNAIL_FORMAT +
+    "\nkey_generation=" + EXPECTED_KEY_GENERATION + "\n";
+}
+
+function unwrapGalleryMediaDek(entry) {
+  const w = entry.wrapped_media_dek;
+  if (!w?.nonce_hex || !w?.ciphertext_hex) throw new Error("CATALOG_WRAPPED_MEDIA_DEK_INVALID");
+  const dek = galleryDecryptAead(
+    galleryKek,
+    hexToBytes(w.nonce_hex),
+    hexToBytes(w.ciphertext_hex),
+    mediaDekAad(entry)
+  );
+  if (!(dek instanceof Uint8Array) || dek.length !== 32) throw new Error("MEDIA_DEK_LENGTH_INVALID");
+  return dek;
+}
+
+async function loadG2Catalog() {
+  const bytes = await driveDownload(galleryToken, CATALOG_FILE_ID, "G2_CATALOG_DOWNLOAD");
+  if (bytes.length !== CATALOG_EXPECTED_BYTES) throw new Error("G2_CATALOG_SIZE_MISMATCH");
+  if (await sha256Hex(bytes) !== CATALOG_EXPECTED_SHA256) throw new Error("G2_CATALOG_SHA256_MISMATCH");
+  const p = JSON.parse(decoder.decode(bytes));
+  if (
+    p.format !== CATALOG_ENVELOPE_FORMAT ||
+    p.vault_id !== EXPECTED_VAULT_ID ||
+    p.generation !== EXPECTED_CATALOG_GENERATION ||
+    p.key_generation !== EXPECTED_KEY_GENERATION ||
+    p.cipher_suite !== "XChaCha20-Poly1305-IETF"
+  ) throw new Error("G2_CATALOG_ENVELOPE_INVALID");
+
+  let catalogDek = null;
+  let plain = null;
+  try {
+    catalogDek = galleryDecryptAead(
+      galleryKek,
+      hexToBytes(p.wrapped_catalog_dek.nonce_hex),
+      hexToBytes(p.wrapped_catalog_dek.ciphertext_hex),
+      catalogWrapAad()
+    );
+    if (catalogDek.length !== 32) throw new Error("CATALOG_DEK_LENGTH_INVALID");
+    plain = galleryDecryptAead(
+      catalogDek,
+      hexToBytes(p.catalog_nonce_hex),
+      hexToBytes(p.catalog_ciphertext_hex),
+      catalogBodyAad()
+    );
+    const c = JSON.parse(decoder.decode(plain));
+    if (
+      c.format !== CATALOG_FORMAT ||
+      c.vault_id !== EXPECTED_VAULT_ID ||
+      c.generation !== EXPECTED_CATALOG_GENERATION ||
+      c.source_generation !== 1 ||
+      c.photo_count !== EXPECTED_PHOTO_COUNT ||
+      !Array.isArray(c.entries) ||
+      c.entries.length !== EXPECTED_PHOTO_COUNT
+    ) throw new Error("G2_CATALOG_PLAINTEXT_INVALID");
+    const seen = new Set();
+    c.entries.forEach((e,i) => {
+      if (
+        e.ordinal !== i || !e.media_id || !e.manifest_file_id || !e.photo_file_id ||
+        !e.thumbnail_file_id || !e.manifest_object_name || !e.photo_object_name ||
+        !e.wrapped_media_dek || seen.has(e.media_id)
+      ) throw new Error("G2_CATALOG_ENTRY_INVALID=" + i);
+      seen.add(e.media_id);
+    });
+    return c;
+  } finally {
+    if (catalogDek instanceof Uint8Array) gallerySodium.memzero(catalogDek);
+    if (plain instanceof Uint8Array) gallerySodium.memzero(plain);
+  }
+}
+
+async function loadThumbnail(entry, img) {
+  let dek = null;
+  let plain = null;
+  try {
+    dek = unwrapGalleryMediaDek(entry);
+    const envelope = await driveDownload(
+      galleryToken, entry.thumbnail_file_id, "THUMBNAIL_" + entry.ordinal
+    );
+    plain = decryptEnvelope(gallerySodium, dek, envelope, thumbnailAad(entry));
+    const url = URL.createObjectURL(new Blob([plain], {type:"image/jpeg"}));
+    thumbnailUrls.push(url);
+    img.src = url;
+    return true;
+  } catch (_) {
+    img.alt = "Unavailable " + (entry.ordinal + 1);
+    return false;
+  } finally {
+    if (dek instanceof Uint8Array) gallerySodium.memzero(dek);
+    if (plain instanceof Uint8Array) gallerySodium.memzero(plain);
+  }
+}
+
+async function openCatalogPhoto(entry) {
+  clearPhoto();
+  let dek = null;
+  let manifestPlain = null;
+  let photoPlain = null;
+  try {
+    dek = unwrapGalleryMediaDek(entry);
+    const manifestEnvelope = await driveDownload(
+      galleryToken, entry.manifest_file_id, "MANIFEST_" + entry.ordinal
+    );
+    manifestPlain = decryptEnvelope(
+      gallerySodium, dek, manifestEnvelope,
+      "pmv:v1:manifest\nvault_id=" + EXPECTED_VAULT_ID +
+      "\nmedia_id=" + entry.media_id + "\n"
+    );
+    const manifest = JSON.parse(decoder.decode(manifestPlain));
+    if (
+      manifest.format_version !== 1 ||
+      manifest.cipher_suite !== "XChaCha20-Poly1305-IETF" ||
+      manifest.vault_id !== EXPECTED_VAULT_ID ||
+      manifest.media_id !== entry.media_id ||
+      manifest.photo_object_name !== entry.photo_object_name ||
+      !Number.isSafeInteger(manifest.photo_plaintext_length) ||
+      manifest.photo_plaintext_length <= 0
+    ) throw new Error("PROTECTED_MANIFEST_INVALID");
+
+    const photoEnvelope = await driveDownload(
+      galleryToken, entry.photo_file_id, "PHOTO_" + entry.ordinal
+    );
+    photoPlain = decryptEnvelope(
+      gallerySodium, dek, photoEnvelope,
+      "pmv:v1:photo\nvault_id=" + EXPECTED_VAULT_ID +
+      "\nmedia_id=" + entry.media_id + "\n"
+    );
+    if (photoPlain.length !== manifest.photo_plaintext_length) {
+      throw new Error("PHOTO_PLAINTEXT_LENGTH_MISMATCH");
+    }
+    const mime = detectMime(photoPlain);
+    photoUrl = URL.createObjectURL(new Blob([photoPlain], {type:mime}));
+    photoEl.src = photoUrl;
+    photoEl.hidden = false;
+    clearButton.disabled = false;
+    add("SELECTED_PHOTO_DISPLAY=PASS;ORDINAL=" + entry.ordinal);
+  } catch (e) {
+    add("SELECTED_PHOTO_DISPLAY=FAIL;ORDINAL=" + entry.ordinal);
+    add("ERROR=" + String(e?.message || e));
+  } finally {
+    if (dek instanceof Uint8Array) gallerySodium.memzero(dek);
+    if (manifestPlain instanceof Uint8Array) gallerySodium.memzero(manifestPlain);
+    if (photoPlain instanceof Uint8Array) gallerySodium.memzero(photoPlain);
+  }
+}
+
+async function renderGallery() {
+  photoGridEl.replaceChildren();
+  for (const entry of galleryCatalog.entries) {
+    const b = document.createElement("button");
+    b.type = "button";
+    const img = document.createElement("img");
+    img.alt = "Photo " + (entry.ordinal + 1);
+    b.appendChild(img);
+    b.onclick = () => openCatalogPhoto(entry);
+    photoGridEl.appendChild(b);
+  }
+  photoGridEl.hidden = false;
+
+  const buttons = [...photoGridEl.querySelectorAll("button")];
+  let next = 0, done = 0, ok = 0;
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= galleryCatalog.entries.length) return;
+      if (await loadThumbnail(galleryCatalog.entries[i], buttons[i].firstElementChild)) ok++;
+      done++;
+      if (done % 25 === 0 || done === EXPECTED_PHOTO_COUNT) {
+        add("THUMBNAIL_PROGRESS=" + done + "/" + EXPECTED_PHOTO_COUNT);
+      }
+    }
+  }
+  await Promise.all(Array.from({length:6}, worker));
+  add("THUMBNAIL_DECRYPT_COMPLETE=" + ok + "/" + EXPECTED_PHOTO_COUNT);
+  if (ok !== EXPECTED_PHOTO_COUNT) throw new Error("THUMBNAIL_SET_INCOMPLETE=" + ok);
+}
+
+function clearGallery() {
+  clearPhoto();
+  for (const url of thumbnailUrls) URL.revokeObjectURL(url);
+  thumbnailUrls = [];
+  photoGridEl.replaceChildren();
+  photoGridEl.hidden = true;
+  if (gallerySodium && galleryKek instanceof Uint8Array) gallerySodium.memzero(galleryKek);
+  galleryKek = null;
+  galleryCatalog = null;
+  galleryToken = null;
+  clearButton.disabled = true;
+}
+
 button.onclick = async () => {
   button.disabled = true;
-
-  clearPhoto();
-
+  clearGallery();
   lines.length = 0;
-
-  let sodium = null;
   let wrappingKey = null;
-  let productionKek = null;
-  let mediaDek = null;
-  let photoPlaintext = null;
-
   try {
-    add(
-      "KEY_CONTEXT=PASS"
-    );
+    add("PRODUCTION_MEDIA_ACCESS=READ_ONLY");
+    galleryToken = consumeOAuthHandoff();
+    add("OAUTH_HANDOFF_RECEIVED=PASS");
 
-    add(
-      "PRODUCTION_MEDIA_ACCESS=READ_ONLY"
-    );
+    const wrapper = await downloadWrapper(galleryToken);
+    const wrapperAad = validateWrapper(wrapper);
+    add("WRAPPER_FORMAT_VALID=PASS");
 
-    const accessToken =
-      consumeOAuthHandoff();
-
-    const wrapper =
-      await downloadWrapper(
-        accessToken
-      );
-
-    const wrapperAad =
-      validateWrapper(
-        wrapper
-      );
-
-    const recordBytes =
-      await driveDownload(
-        accessToken,
-        RECORD_FILE_ID,
-        "PRODUCTION_RECORD_DOWNLOAD"
-      );
-
-    const record =
-      JSON.parse(
-        decoder.decode(
-          recordBytes
-        )
-      );
-
-    add(
-      "PRODUCTION_RECORD_DOWNLOAD=PASS"
-    );
-
-    validateRecord(
-      record
-    );
-
-    const password =
-      passwordEl.value;
-
+    const password = passwordEl.value;
     passwordEl.value = "";
+    if (!password) throw new Error("PMV_PASSWORD_EMPTY");
 
-    if (!password) {
-      throw new Error(
-        "PMV_PASSWORD_EMPTY"
-      );
+    gallerySodium = await loadVerifiedSodium();
+    add("VERIFIED_LIBSODIUM_IMPORT=PASS");
+
+    wrappingKey = gallerySodium.crypto_pwhash(
+      32, password, b64ToBytes(wrapper.salt_b64), 3, 536870912,
+      gallerySodium.crypto_pwhash_ALG_ARGON2ID13
+    );
+    add("ARGON2ID_DERIVATION=PASS");
+
+    galleryKek = galleryDecryptAead(
+      wrappingKey,
+      b64ToBytes(wrapper.nonce_b64),
+      b64ToBytes(wrapper.wrapped_kek_ciphertext_b64),
+      wrapperAad
+    );
+    if (!(galleryKek instanceof Uint8Array) || galleryKek.length !== 32) {
+      throw new Error("PRODUCTION_KEK_LENGTH_INVALID");
     }
+    add("PRODUCTION_KEK_UNWRAP=PASS");
 
-    sodium =
-      await loadVerifiedSodium();
+    galleryCatalog = await loadG2Catalog();
+    add("G2_CATALOG_SHA256=PASS");
+    add("G2_CATALOG_AUTHENTICATED=PASS");
+    add("CATALOG_GENERATION=2");
+    add("CATALOG_ENTRY_COUNT=392");
 
-    wrappingKey =
-      sodium.crypto_pwhash(
-        32,
-        password,
-        b64ToBytes(
-          wrapper.salt_b64
-        ),
-        3,
-        536870912,
-        sodium
-          .crypto_pwhash_ALG_ARGON2ID13
-      );
-
-    if (
-      !(wrappingKey instanceof Uint8Array) ||
-      wrappingKey.length !== 32
-    ) {
-      throw new Error(
-        "WRAPPING_KEY_INVALID"
-      );
-    }
-
-    add(
-      "ARGON2ID_DERIVATION=PASS"
-    );
-
-    productionKek =
-      sodium
-        .crypto_aead_xchacha20poly1305_ietf_decrypt(
-          null,
-          b64ToBytes(
-            wrapper
-              .wrapped_kek_ciphertext_b64
-          ),
-          encoder.encode(
-            wrapperAad
-          ),
-          b64ToBytes(
-            wrapper.nonce_b64
-          ),
-          wrappingKey
-        );
-
-    if (
-      !(productionKek instanceof Uint8Array) ||
-      productionKek.length !== 32
-    ) {
-      throw new Error(
-        "PRODUCTION_KEK_LENGTH_INVALID"
-      );
-    }
-
-    add(
-      "PRODUCTION_KEK_UNWRAP=PASS"
-    );
-
-    const mediaDekAad =
-      "pmv:v1:key-wrap\n" +
-      "purpose=media-dek\n" +
-      "vault_id=" +
-      record.vault_id +
-      "\nsubject_id=" +
-      record.media_id +
-      "\nkey_generation=" +
-      record.key_generation +
-      "\n";
-
-    mediaDek =
-      sodium
-        .crypto_aead_xchacha20poly1305_ietf_decrypt(
-          null,
-          hexToBytes(
-            record
-              .wrapped_media_dek
-              .ciphertext_hex
-          ),
-          encoder.encode(
-            mediaDekAad
-          ),
-          hexToBytes(
-            record
-              .wrapped_media_dek
-              .nonce_hex
-          ),
-          productionKek
-        );
-
-    if (
-      !(mediaDek instanceof Uint8Array) ||
-      mediaDek.length !== 32
-    ) {
-      throw new Error(
-        "MEDIA_DEK_LENGTH_INVALID"
-      );
-    }
-
-    add(
-      "MEDIA_DEK_UNWRAP=PASS"
-    );
-
-    const manifestEnvelope =
-      await driveDownload(
-        accessToken,
-        MANIFEST_FILE_ID,
-        "PRODUCTION_MANIFEST_DOWNLOAD"
-      );
-
-    add(
-      "PRODUCTION_MANIFEST_DOWNLOAD=PASS"
-    );
-
-    const manifestAad =
-      "pmv:v1:manifest\n" +
-      "vault_id=" +
-      record.vault_id +
-      "\nmedia_id=" +
-      record.media_id +
-      "\n";
-
-    const manifestPlaintext =
-      decryptEnvelope(
-        sodium,
-        mediaDek,
-        manifestEnvelope,
-        manifestAad
-      );
-
-    const manifest =
-      JSON.parse(
-        decoder.decode(
-          manifestPlaintext
-        )
-      );
-
-    sodium.memzero(
-      manifestPlaintext
-    );
-
-    const manifestValid =
-      manifest.format_version === 1 &&
-      manifest.cipher_suite ===
-        "XChaCha20-Poly1305-IETF" &&
-      manifest.vault_id ===
-        record.vault_id &&
-      manifest.media_id ===
-        record.media_id &&
-      manifest.photo_object_name ===
-        record.photo_object_name &&
-      Number.isSafeInteger(
-        manifest.photo_plaintext_length
-      ) &&
-      manifest.photo_plaintext_length > 0;
-
-    if (!manifestValid) {
-      throw new Error(
-        "PROTECTED_MANIFEST_INVALID"
-      );
-    }
-
-    add(
-      "PROTECTED_MANIFEST_AUTHENTICATED=PASS"
-    );
-
-    add(
-      "PROTECTED_MANIFEST_VALID=PASS"
-    );
-
-    const photoEnvelope =
-      await driveDownload(
-        accessToken,
-        PHOTO_FILE_ID,
-        "PRODUCTION_PHOTO_DOWNLOAD"
-      );
-
-    add(
-      "PRODUCTION_PHOTO_CIPHERTEXT_DOWNLOAD=PASS"
-    );
-
-    const photoAad =
-      "pmv:v1:photo\n" +
-      "vault_id=" +
-      record.vault_id +
-      "\nmedia_id=" +
-      record.media_id +
-      "\n";
-
-    photoPlaintext =
-      decryptEnvelope(
-        sodium,
-        mediaDek,
-        photoEnvelope,
-        photoAad
-      );
-
-    if (
-      photoPlaintext.length !==
-      manifest.photo_plaintext_length
-    ) {
-      throw new Error(
-        "PHOTO_PLAINTEXT_LENGTH_MISMATCH"
-      );
-    }
-
-    add(
-      "PRODUCTION_PHOTO_DECRYPT=PASS"
-    );
-
-    add(
-      "PHOTO_PLAINTEXT_LENGTH_MATCH=PASS"
-    );
-
-    const mime =
-      detectMime(
-        photoPlaintext
-      );
-
-    add(
-      "PHOTO_MIME_DETECTED=" +
-      mime
-    );
-
-    photoUrl =
-      URL.createObjectURL(
-        new Blob(
-          [photoPlaintext],
-          {
-            type: mime
-          }
-        )
-      );
-
-    photoEl.onload = () => {
-      add(
-        "PHOTO_DISPLAY=PASS"
-      );
-
-      add(
-        "PHOTO_PLAINTEXT_PERSISTED=NO"
-      );
-
-      add(
-        "PC7C_PHOTO_RESULT=PASS"
-      );
-    };
-
-    photoEl.onerror = () => {
-      add(
-        "PHOTO_DISPLAY=FAIL"
-      );
-
-      add(
-        "PC7C_PHOTO_RESULT=FAIL"
-      );
-    };
-
-    photoEl.src =
-      photoUrl;
-
-    photoEl.hidden = false;
-
-    clearButton.disabled =
-      false;
-
-    sodium.memzero(
-      photoPlaintext
-    );
-
-    photoPlaintext = null;
-
-    add(
-      "PHOTO_PLAINTEXT_BUFFER_ZEROIZED=PASS"
-    );
-
-    add(
-      "PHOTO_OBJECT_URL_ACTIVE=YES"
-    );
-  }
-  catch (e) {
-    add(
-      "PC7C_PHOTO_RESULT=FAIL"
-    );
-
-    add(
-      "ERROR=" +
-      String(
-        e?.message || e
-      )
-    );
-  }
-  finally {
-    if (
-      sodium &&
-      photoPlaintext instanceof Uint8Array
-    ) {
-      sodium.memzero(
-        photoPlaintext
-      );
-
-      add(
-        "PHOTO_PLAINTEXT_BUFFER_ZEROIZED=PASS"
-      );
-    }
-
-    if (
-      sodium &&
-      mediaDek instanceof Uint8Array
-    ) {
-      sodium.memzero(
-        mediaDek
-      );
-
-      add(
-        "MEDIA_DEK_ZEROIZED=PASS"
-      );
-    }
-
-    if (
-      sodium &&
-      productionKek instanceof Uint8Array
-    ) {
-      sodium.memzero(
-        productionKek
-      );
-
-      add(
-        "PRODUCTION_KEK_ZEROIZED=PASS"
-      );
-    }
-
-    if (
-      sodium &&
-      wrappingKey instanceof Uint8Array
-    ) {
-      sodium.memzero(
-        wrappingKey
-      );
-
-      add(
-        "WRAPPING_KEY_ZEROIZED=PASS"
-      );
-    }
-
-    add(
-      "PRODUCTION_KEK_PERSISTED=NO"
-    );
-
-    add(
-      "MEDIA_DEK_PERSISTED=NO"
-    );
-
+    await renderGallery();
+    clearButton.disabled = false;
+    add("PHOTO_GRID_READY=PASS");
+    add("FULL_PHOTO_DOWNLOAD_POLICY=SELECTED_ONLY");
+    add("PLAINTEXT_PERSISTED=NO");
+    add("PC7C_MULTI_PHOTO_RESULT=PASS");
+  } catch (e) {
+    add("PC7C_MULTI_PHOTO_RESULT=FAIL");
+    add("ERROR=" + String(e?.message || e));
+    clearGallery();
+  } finally {
+    if (wrappingKey instanceof Uint8Array && gallerySodium) gallerySodium.memzero(wrappingKey);
     button.disabled = false;
   }
 };
+
+clearButton.onclick = clearGallery;
+window.addEventListener("pagehide", clearGallery, { once: true });
