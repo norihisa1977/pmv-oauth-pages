@@ -30,7 +30,8 @@ jobs:
               "tools/photo-catalog-backfill/New-PmvPhotoThumbnail.ps1",
               "tools/photo-catalog-backfill/Install-PmvPhotoCatalogBackfillCore.ps1",
               "tools/photo-catalog-backfill/Run-PmvPhotoCatalogBackfill.ps1",
-              "tools/photo-catalog-backfill/Invoke-PmvPhotoCatalogBackfill.ps1"
+              "tools/photo-catalog-backfill/Invoke-PmvPhotoCatalogBackfill.ps1",
+              "tools/photo-catalog-backfill/Run-PmvPhotoCatalogG2Upgrade.ps1"
           )
           foreach ($path in $paths) {
               $tokens = $null
@@ -148,6 +149,26 @@ jobs:
               }
               Write-Output "SHELL_FALLBACK_COMPILE=PASS"
           }
+
+      - name: G2 upgrade runner static contract
+        shell: pwsh
+        run: |
+          $path = "tools/photo-catalog-backfill/Run-PmvPhotoCatalogG2Upgrade.ps1"
+          $text = Get-Content $path -Raw
+          foreach ($needle in @(
+              'G2_CATALOG_MUTATION_NOT_AUTHORIZED_USE_EXECUTE',
+              '1G-HGKkyhUW3kaKN5m0AZAJb7-_zv0DS8',
+              'upgrade-catalog-g1-to-g2',
+              'WRAPPED_MEDIA_DEK_EMBEDDED=YES',
+              'THUMBNAILS_REGENERATED=0',
+              'ORIGINAL_PRODUCTION_MEDIA_MUTATION=0',
+              'PRODUCTION_KEK_CHANGED=NO',
+              'RECOVERY_AUTHORITY_CHANGED=NO',
+              'https://www.googleapis.com/auth/drive.file'
+          )) {
+              if (-not $text.Contains($needle)) { throw "G2_RUNNER_REQUIRED_MARKER_MISSING=$needle" }
+          }
+          Write-Output "G2_RUNNER_STATIC_CONTRACT=PASS"
 
       - name: Rust syntax and formatting
         shell: pwsh
