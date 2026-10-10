@@ -406,11 +406,13 @@ async function driveDownload(
       }
     );
 
-  add(
-    label +
-    "_HTTP=" +
-    response.status
-  );
+  if (!label.startsWith("THUMBNAIL_") || !response.ok) {
+    add(
+      label +
+      "_HTTP=" +
+      response.status
+    );
+  }
 
   if (!response.ok) {
     throw new Error(
