@@ -12,7 +12,7 @@ if (-not $Execute) {
     throw "BACKFILL_BOOTSTRAP_NOT_AUTHORIZED_USE_EXECUTE"
 }
 
-$sourceCommit = "028603f55217d5e87b2c89263617eaae73acefa3"
+$sourceCommit = "396acff696846e099224fbd52d4b368de26dc451"
 $baseUrl = "https://raw.githubusercontent.com/norihisa1977/pmv-oauth-pages/$sourceCommit/tools/photo-catalog-backfill"
 $tempDir = Join-Path $env:TEMP ("pmv-photo-catalog-bootstrap-" + [guid]::NewGuid().ToString("N"))
 
