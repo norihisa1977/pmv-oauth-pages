@@ -34,8 +34,18 @@ function Get-PmvImageExtension {
 
     if ($read -ge 12 -and [Text.Encoding]::ASCII.GetString($buffer,4,4) -eq "ftyp") {
         $brand = [Text.Encoding]::ASCII.GetString($buffer,8,4)
-        if ($brand -in @("heic","heix","hevc","hevx","mif1","msf1")) { return ".heic" }
+
         if ($brand -in @("avif","avis")) { return ".avif" }
+
+        # Canonical Production photo corpus is HEIC/JPG/PNG only.
+        # Any remaining ISO-BMFF image in this corpus is therefore HEIC/HEIF.
+        if ($brand -in @(
+            "heic","heix","hevc","hevx",
+            "heis","heim","hevm","hevs",
+            "mif1","msf1"
+        )) { return ".heic" }
+
+        return ".heic"
     }
 
     return ".img"
