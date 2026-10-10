@@ -228,6 +228,55 @@ public static class PmvShellThumbnail
     }
 }
 
+function Save-PmvUnavailableThumbnail {
+    param(
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [Parameter(Mandatory = $true)][int]$Dimension,
+        [Parameter(Mandatory = $true)][int]$Quality
+    )
+
+    Add-Type -AssemblyName System.Drawing
+
+    $bitmap = New-Object System.Drawing.Bitmap($Dimension,$Dimension)
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    $font = New-Object System.Drawing.Font("Segoe UI",18,[System.Drawing.FontStyle]::Regular,[System.Drawing.GraphicsUnit]::Pixel)
+    $brush = [System.Drawing.Brushes]::Gray
+
+    try {
+        $graphics.Clear([System.Drawing.Color]::White)
+        $text = "Preview unavailable"
+        $size = $graphics.MeasureString($text,$font)
+        $x = [Math]::Max(0,($Dimension - $size.Width) / 2)
+        $y = [Math]::Max(0,($Dimension - $size.Height) / 2)
+        $graphics.DrawString($text,$font,$brush,$x,$y)
+
+        $jpegCodec = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() |
+            Where-Object { $_.MimeType -eq "image/jpeg" } |
+            Select-Object -First 1
+
+        if (-not $jpegCodec) { throw "JPEG_ENCODER_NOT_FOUND" }
+
+        $qualityEncoder = [System.Drawing.Imaging.Encoder]::Quality
+        $encoderParameters = New-Object System.Drawing.Imaging.EncoderParameters(1)
+        $encoderParameters.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter(
+            $qualityEncoder,
+            [int64]$Quality
+        )
+
+        try {
+            $bitmap.Save($Destination,$jpegCodec,$encoderParameters)
+        }
+        finally {
+            $encoderParameters.Dispose()
+        }
+    }
+    finally {
+        $font.Dispose()
+        $graphics.Dispose()
+        $bitmap.Dispose()
+    }
+}
+
 $parent = Split-Path -Parent $OutputPath
 if ($parent) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
 
@@ -255,7 +304,12 @@ try {
             $decoderUsed = "WINDOWS_SHELL"
         }
         catch {
-            throw "THUMBNAIL_ALL_DECODERS_FAILED;TYPE=$extension;WPF=$($_.Exception.Message)"
+            if (Test-Path -LiteralPath $OutputPath) {
+                Remove-Item -LiteralPath $OutputPath -Force -ErrorAction SilentlyContinue
+            }
+
+            Save-PmvUnavailableThumbnail -Destination $OutputPath -Dimension $MaxDimension -Quality $JpegQuality
+            $decoderUsed = "PLACEHOLDER_UNSUPPORTED"
         }
     }
 }
@@ -273,3 +327,4 @@ Write-Output "MAX_DIMENSION=$MaxDimension"
 Write-Output "OUTPUT_FORMAT=JPEG"
 Write-Output "METADATA_STRIPPED=YES"
 Write-Output "DECODER=$decoderUsed"
+Write-Output ("THUMBNAIL_PLACEHOLDER=" + $(if ($decoderUsed -eq "PLACEHOLDER_UNSUPPORTED") { "YES" } else { "NO" }))
