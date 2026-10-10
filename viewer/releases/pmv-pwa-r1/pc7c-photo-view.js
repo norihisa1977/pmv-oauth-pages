@@ -991,5 +991,9 @@ button.onclick = async () => {
   }
 };
 
+photoEl.onclick = () => {
+  if (!photoEl.hidden) clearPhoto();
+};
+
 clearButton.onclick = clearGallery;
 window.addEventListener("pagehide", clearGallery, { once: true });
