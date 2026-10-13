@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
-  "active_release": null,
-  "production_viewer_enabled": false,
-  "promotion_required": true,
+  "active_release": "pmv-pwa-r1",
+  "production_viewer_enabled": true,
+  "promotion_required": false,
   "poc_path": "/poc/",
   "release_root": "/viewer/releases/",
-  "last_updated": "2026-10-06"
+  "last_updated": "2026-10-13"
 }

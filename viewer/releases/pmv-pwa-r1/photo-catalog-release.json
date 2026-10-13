@@ -1,0 +1,12 @@
+{
+  "catalog_bytes": 431391,
+  "catalog_file_id": "1DgwU9ZGLd2vdoGgxmu3yfP3RSXbcwCDN",
+  "catalog_sha256": "9ddb0d86dc6ea6d3957e8ddc2aa2dd5648f2b6cc28c54eaed899c43893cde03f",
+  "format": "PMV-PHOTO-CATALOG-RELEASE-V1",
+  "generation": 3,
+  "key_generation": 1,
+  "media_ids_sha256_utf8_lf": "657990e82cad7c6c4744524271ac6fe46c4bb7fe21fc011b9b57e29db58a7304",
+  "photo_count": 354,
+  "target_set_sha256": "6c05bb0dcec96ad55fcb4d71a9250db88979d1f7f0d33eea2d7524d4bcd3d30e",
+  "vault_id": "pmv-v1-production"
+}

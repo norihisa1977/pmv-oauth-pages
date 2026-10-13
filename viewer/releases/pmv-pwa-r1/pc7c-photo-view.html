@@ -1,10 +1,10 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; connect-src 'self' https://www.googleapis.com; img-src blob:; style-src 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'">
-<title>PMV Production Photos</title>
+<title>PMV PC-7C Production Photo View</title>
 <style>
 body{
   font-family:-apple-system,BlinkMacSystemFont,sans-serif;
@@ -36,12 +36,7 @@ img{
   height:auto;
   margin-top:18px
 }
-
-#photoGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:18px}
-#photoGrid button{border:0;padding:0;background:#eee;aspect-ratio:1/1;overflow:hidden;border-radius:4px}
-#photoGrid img{width:100%;height:100%;object-fit:cover;margin:0}
-#photo:not([hidden]){position:fixed;inset:0;margin:auto;max-width:100vw;max-height:100vh;z-index:20;background:#000;object-fit:contain}
-@media(min-width:700px){#photoGrid{grid-template-columns:repeat(6,minmax(0,1fr))}}
+#photoGrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:10px; } #photoGrid[hidden] { display:none; } #photoGrid button { padding:4px; background:transparent; border:1px solid #bbb; } #photoGrid img { width:100%; margin:0; }
 </style>
 <meta name="theme-color" content="#111111">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -52,10 +47,12 @@ img{
 </head>
 <body>
 
-<h1>PMV Production Photos</h1>
+<h1>PMV PC-7C Production Photo View</h1>
 
 <p class="note">
-This viewer loads the encrypted Generation 2 catalog and encrypted thumbnails for all 392 Production photos. Full-size ciphertext is downloaded and decrypted only after a photo is selected. No plaintext photo is written to persistent storage.
+This viewer loads 354 encrypted photo thumbnails. Selecting a photo downloads its encrypted original,
+decrypts it in memory only, and displays it with a transient blob URL.
+No plaintext photo is written to persistent storage.
 </p>
 
 <label>
@@ -70,18 +67,18 @@ PMV Password
 <br><br>
 
 <button id="run">
-Open 392 Photos
+View Photos
 </button>
 
 <button
   id="clear"
   disabled>
-Lock / Clear
+Clear Photos
 </button>
 
 <pre id="report">READY</pre>
+<div id="photoGrid" aria-label="Photos" hidden></div>
 
-<div id="photoGrid" hidden></div>
 <img
   id="photo"
   alt="PMV Production photo"

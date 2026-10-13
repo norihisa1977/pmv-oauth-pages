@@ -1,21 +1,43 @@
 {
-  "schema_version": 1,
-  "release_id": "pmv-pwa-r1",
-  "status": "CANDIDATE_NOT_ACTIVE",
-  "immutable_after_approval": true,
-  "executable_policy": {
-    "third_party_script_origins": [],
-    "runtime_crypto_origin": "same-origin",
-    "unexpected_hash_action": "fail-closed"
-  },
-  "assets": {
-    "vendor/libsodium-0.8.4/libsodium-wrappers.mjs": {
-      "sha256": "5f8560f2d9822d138ca4ff1a63cbb1c378115140f2905438d7458b514cb9f608",
-      "executable": true
-    },
-    "vendor/libsodium-0.8.4/libsodium-sumo.mjs": {
-      "sha256": "4c94708f7e78eac7a32b29e2ce0ff96f4bd599d78c129f27bf8a061e20776c8c",
-      "executable": true
-    }
-  }
+    "schema_version":  1,
+    "release_id":  "pmv-pwa-r1",
+    "status":  "CANDIDATE_NOT_ACTIVE",
+    "immutable_after_approval":  true,
+    "executable_policy":  {
+                              "third_party_script_origins":  [
+
+                                                             ],
+                              "runtime_crypto_origin":  "same-origin",
+                              "unexpected_hash_action":  "fail-closed"
+                          },
+    "assets":  {
+                   "vendor/libsodium-0.8.4/libsodium-wrappers.mjs":  {
+                                                                         "sha256":  "5f8560f2d9822d138ca4ff1a63cbb1c378115140f2905438d7458b514cb9f608",
+                                                                         "executable":  true
+                                                                     },
+                   "vendor/libsodium-0.8.4/libsodium-sumo.mjs":  {
+                                                                     "sha256":  "4c94708f7e78eac7a32b29e2ce0ff96f4bd599d78c129f27bf8a061e20776c8c",
+                                                                     "executable":  true
+                                                                 },
+                   "pc7c-photo-view.js":  {
+                                              "sha256":  "9dfc42ab12db2aeddf84ae6b88d8ec4bc547506ac596d0c3360fb93dc55ff078",
+                                              "bytes":  24462,
+                                              "executable":  true
+                                          },
+                   "pc7c-photo-view.html":  {
+                                                "sha256":  "d7e81aa1b22c8f9875a41752e94f6466c229c2dd9c8000671e5be3fc95241396",
+                                                "bytes":  2281,
+                                                "executable":  false
+                                            },
+                   "photo-catalog-contract.js":  {
+                                                     "sha256":  "096ba8b312b27737dc241fea7fbbd6cb941acd4fcfcb3ba488220b12991943f4",
+                                                     "bytes":  2943,
+                                                     "executable":  true
+                                                 },
+                   "photo-catalog-release.json":  {
+                                                      "sha256":  "53cd19a5d8ccf428507584aff7d7414eafb3a466715bd1cb466c37e38619f417",
+                                                      "bytes":  507,
+                                                      "executable":  false
+                                                  }
+               }
 }

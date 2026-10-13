@@ -1,11 +1,12 @@
-﻿const WRAPPER_NAME =
+const photoCatalogScriptUrl = document.currentScript?.src || [...document.scripts].find(s => s.src && new URL(s.src).pathname.endsWith("/pc7c-photo-view.js"))?.src;
+if (!photoCatalogScriptUrl) throw new Error("PHOTO_CATALOG_ASSET_SCRIPT_MISSING");
+const photoCatalogAssetBase = new URL(".", photoCatalogScriptUrl);
+const WRAPPER_NAME =
   "pmv-pwa-wrapped-kek-v1.json";
 
-const CATALOG_FILE_ID = "1_D0cwTQu6zmqQnL2MVUTjo2NtmD-I2Ol";
-const CATALOG_EXPECTED_BYTES = 453029;
-const CATALOG_EXPECTED_SHA256 = "819216c9de8d94662346ad9ac2bd32a82d634b5a3ebbe17c387a3e71d362ab1e";
-const EXPECTED_CATALOG_GENERATION = 2;
-const EXPECTED_PHOTO_COUNT = 392;
+const CATALOG_RELEASE_DESCRIPTOR_SHA256 = "53cd19a5d8ccf428507584aff7d7414eafb3a466715bd1cb466c37e38619f417";
+let catalogRelease = null;
+let CATALOG_FILE_ID, CATALOG_EXPECTED_BYTES, CATALOG_EXPECTED_SHA256, EXPECTED_CATALOG_GENERATION, EXPECTED_PHOTO_COUNT;
 const CATALOG_FORMAT = "PMV-PHOTO-CATALOG-V1";
 const CATALOG_ENVELOPE_FORMAT = "PMV-PHOTO-CATALOG-ENCRYPTED-V1";
 const THUMBNAIL_FORMAT = "PMV-PHOTO-THUMBNAIL-V0";
@@ -35,6 +36,21 @@ let galleryToken = null;
 let galleryKek = null;
 let galleryCatalog = null;
 let thumbnailUrls = [];
+let galleryEpoch = 0;
+let selectionEpoch = 0;
+const imageCancellations = new WeakMap();
+function cancelImage(img) { imageCancellations.get(img)?.(); }
+
+function displayImage(img, url) {
+  cancelImage(img);
+  return new Promise((resolve, reject) => {
+    const finish = error => { img.onload = img.onerror = null; imageCancellations.delete(img); error ? reject(error) : resolve(); };
+    imageCancellations.set(img, () => finish(new Error("IMAGE_DISPLAY_CANCELLED")));
+    img.onload = () => finish();
+    img.onerror = () => finish(new Error("IMAGE_DISPLAY_FAILED"));
+    img.src = url;
+  });
+}
 
 const lines = [];
 const encoder = new TextEncoder();
@@ -680,6 +696,7 @@ function detectMime(bytes) {
 }
 
 function clearPhoto() {
+  cancelImage(photoEl);
   if (photoUrl) {
     URL.revokeObjectURL(
       photoUrl
@@ -698,8 +715,7 @@ function clearPhoto() {
 
   photoEl.hidden = true;
 
-  clearButton.disabled =
-    true;
+  clearButton.disabled = !galleryCatalog;
 }
 
 clearButton.onclick =
@@ -759,10 +775,22 @@ function unwrapGalleryMediaDek(entry) {
   return dek;
 }
 
-async function loadG2Catalog() {
-  const bytes = await driveDownload(galleryToken, CATALOG_FILE_ID, "G2_CATALOG_DOWNLOAD");
-  if (bytes.length !== CATALOG_EXPECTED_BYTES) throw new Error("G2_CATALOG_SIZE_MISMATCH");
-  if (await sha256Hex(bytes) !== CATALOG_EXPECTED_SHA256) throw new Error("G2_CATALOG_SHA256_MISMATCH");
+async function loadPhotoCatalog() {
+  if (!/^[a-f0-9]{64}$/.test(CATALOG_RELEASE_DESCRIPTOR_SHA256)) throw new Error("NEW_RELEASE_NOT_CONFIGURED");
+  await import(new URL("photo-catalog-contract.js", photoCatalogAssetBase).href);
+  const response = await fetch(new URL("photo-catalog-release.json", photoCatalogAssetBase).href, { cache: "no-store" });
+  if (!response.ok) throw new Error("PHOTO_CATALOG_RELEASE_HTTP=" + response.status);
+  const releaseBytes = new Uint8Array(await response.arrayBuffer());
+  if (await sha256Hex(releaseBytes) !== CATALOG_RELEASE_DESCRIPTOR_SHA256) throw new Error("PHOTO_CATALOG_RELEASE_HASH_MISMATCH");
+  catalogRelease = globalThis.PmvPhotoCatalogContract.validateRelease(JSON.parse(decoder.decode(releaseBytes)));
+  CATALOG_FILE_ID = catalogRelease.catalog_file_id;
+  CATALOG_EXPECTED_BYTES = catalogRelease.catalog_bytes;
+  CATALOG_EXPECTED_SHA256 = catalogRelease.catalog_sha256;
+  EXPECTED_CATALOG_GENERATION = catalogRelease.generation;
+  EXPECTED_PHOTO_COUNT = catalogRelease.photo_count;
+  const bytes = await driveDownload(galleryToken, CATALOG_FILE_ID, "PHOTO_CATALOG_DOWNLOAD");
+  if (bytes.length !== CATALOG_EXPECTED_BYTES) throw new Error("PHOTO_CATALOG_SIZE_MISMATCH");
+  if (await sha256Hex(bytes) !== CATALOG_EXPECTED_SHA256) throw new Error("PHOTO_CATALOG_SHA256_MISMATCH");
   const p = JSON.parse(decoder.decode(bytes));
   if (
     p.format !== CATALOG_ENVELOPE_FORMAT ||
@@ -770,7 +798,7 @@ async function loadG2Catalog() {
     p.generation !== EXPECTED_CATALOG_GENERATION ||
     p.key_generation !== EXPECTED_KEY_GENERATION ||
     p.cipher_suite !== "XChaCha20-Poly1305-IETF"
-  ) throw new Error("G2_CATALOG_ENVELOPE_INVALID");
+  ) throw new Error("PHOTO_CATALOG_ENVELOPE_INVALID");
 
   let catalogDek = null;
   let plain = null;
@@ -789,24 +817,7 @@ async function loadG2Catalog() {
       catalogBodyAad()
     );
     const c = JSON.parse(decoder.decode(plain));
-    if (
-      c.format !== CATALOG_FORMAT ||
-      c.vault_id !== EXPECTED_VAULT_ID ||
-      c.generation !== EXPECTED_CATALOG_GENERATION ||
-      c.source_generation !== 1 ||
-      c.photo_count !== EXPECTED_PHOTO_COUNT ||
-      !Array.isArray(c.entries) ||
-      c.entries.length !== EXPECTED_PHOTO_COUNT
-    ) throw new Error("G2_CATALOG_PLAINTEXT_INVALID");
-    const seen = new Set();
-    c.entries.forEach((e,i) => {
-      if (
-        e.ordinal !== i || !e.media_id || !e.manifest_file_id || !e.photo_file_id ||
-        !e.thumbnail_file_id || !e.manifest_object_name || !e.photo_object_name ||
-        !e.wrapped_media_dek || seen.has(e.media_id)
-      ) throw new Error("G2_CATALOG_ENTRY_INVALID=" + i);
-      seen.add(e.media_id);
-    });
+    await globalThis.PmvPhotoCatalogContract.validateCatalog(c, catalogRelease, sha256Hex);
     return c;
   } finally {
     if (catalogDek instanceof Uint8Array) gallerySodium.memzero(catalogDek);
@@ -814,20 +825,26 @@ async function loadG2Catalog() {
   }
 }
 
-async function loadThumbnail(entry, img) {
+async function loadThumbnail(entry, img, epoch) {
   let dek = null;
   let plain = null;
+  let url = null;
   try {
     dek = unwrapGalleryMediaDek(entry);
     const envelope = await driveDownload(
       galleryToken, entry.thumbnail_file_id, "THUMBNAIL_" + entry.ordinal
     );
+    if (epoch !== galleryEpoch) throw new Error("GALLERY_CLEARED");
     plain = decryptEnvelope(gallerySodium, dek, envelope, thumbnailAad(entry));
-    const url = URL.createObjectURL(new Blob([plain], {type:"image/jpeg"}));
+    if (plain.length < 3 || plain[0] !== 255 || plain[1] !== 216 || plain[2] !== 255) throw new Error("THUMBNAIL_NOT_JPEG");
+    url = URL.createObjectURL(new Blob([plain], {type:"image/jpeg"}));
     thumbnailUrls.push(url);
-    img.src = url;
+    await displayImage(img, url);
+    if (epoch !== galleryEpoch) throw new Error("GALLERY_CLEARED");
     return true;
   } catch (_) {
+    if (url) { URL.revokeObjectURL(url); thumbnailUrls = thumbnailUrls.filter(v => v !== url); }
+    img.removeAttribute("src");
     img.alt = "Unavailable " + (entry.ordinal + 1);
     return false;
   } finally {
@@ -837,6 +854,7 @@ async function loadThumbnail(entry, img) {
 }
 
 async function openCatalogPhoto(entry) {
+  const epoch = galleryEpoch, selected = ++selectionEpoch;
   clearPhoto();
   let dek = null;
   let manifestPlain = null;
@@ -846,6 +864,7 @@ async function openCatalogPhoto(entry) {
     const manifestEnvelope = await driveDownload(
       galleryToken, entry.manifest_file_id, "MANIFEST_" + entry.ordinal
     );
+    if (epoch !== galleryEpoch || selected !== selectionEpoch) throw new Error("SELECTION_CANCELLED");
     manifestPlain = decryptEnvelope(
       gallerySodium, dek, manifestEnvelope,
       "pmv:v1:manifest\nvault_id=" + EXPECTED_VAULT_ID +
@@ -865,6 +884,7 @@ async function openCatalogPhoto(entry) {
     const photoEnvelope = await driveDownload(
       galleryToken, entry.photo_file_id, "PHOTO_" + entry.ordinal
     );
+    if (epoch !== galleryEpoch || selected !== selectionEpoch) throw new Error("SELECTION_CANCELLED");
     photoPlain = decryptEnvelope(
       gallerySodium, dek, photoEnvelope,
       "pmv:v1:photo\nvault_id=" + EXPECTED_VAULT_ID +
@@ -875,11 +895,14 @@ async function openCatalogPhoto(entry) {
     }
     const mime = detectMime(photoPlain);
     photoUrl = URL.createObjectURL(new Blob([photoPlain], {type:mime}));
-    photoEl.src = photoUrl;
+    await displayImage(photoEl, photoUrl);
+    if (epoch !== galleryEpoch || selected !== selectionEpoch) throw new Error("SELECTION_CANCELLED");
     photoEl.hidden = false;
     clearButton.disabled = false;
     add("SELECTED_PHOTO_DISPLAY=PASS;ORDINAL=" + entry.ordinal);
   } catch (e) {
+    if (epoch !== galleryEpoch || selected !== selectionEpoch) return;
+    clearPhoto();
     add("SELECTED_PHOTO_DISPLAY=FAIL;ORDINAL=" + entry.ordinal);
     add("ERROR=" + String(e?.message || e));
   } finally {
@@ -890,10 +913,14 @@ async function openCatalogPhoto(entry) {
 }
 
 async function renderGallery() {
+  const epoch = galleryEpoch;
+  const entries = galleryCatalog.entries;
   photoGridEl.replaceChildren();
   for (const entry of galleryCatalog.entries) {
     const b = document.createElement("button");
     b.type = "button";
+    b.disabled = true;
+    b.setAttribute("aria-label", "Photo " + (entry.ordinal + 1));
     const img = document.createElement("img");
     img.alt = "Photo " + (entry.ordinal + 1);
     b.appendChild(img);
@@ -907,8 +934,9 @@ async function renderGallery() {
   async function worker() {
     while (true) {
       const i = next++;
-      if (i >= galleryCatalog.entries.length) return;
-      if (await loadThumbnail(galleryCatalog.entries[i], buttons[i].firstElementChild)) ok++;
+      if (epoch !== galleryEpoch || i >= entries.length) return;
+      if (await loadThumbnail(entries[i], buttons[i].firstElementChild, epoch)) ok++;
+      if (epoch !== galleryEpoch) return;
       done++;
       if (done % 25 === 0 || done === EXPECTED_PHOTO_COUNT) {
         add("THUMBNAIL_PROGRESS=" + done + "/" + EXPECTED_PHOTO_COUNT);
@@ -916,11 +944,16 @@ async function renderGallery() {
     }
   }
   await Promise.all(Array.from({length:6}, worker));
+  if (epoch !== galleryEpoch) throw new Error("GALLERY_CLEARED");
   add("THUMBNAIL_DECRYPT_COMPLETE=" + ok + "/" + EXPECTED_PHOTO_COUNT);
   if (ok !== EXPECTED_PHOTO_COUNT) throw new Error("THUMBNAIL_SET_INCOMPLETE=" + ok);
+  for (const b of buttons) b.disabled = false;
 }
 
 function clearGallery() {
+  galleryEpoch++;
+  selectionEpoch++;
+  for (const img of photoGridEl.querySelectorAll("img")) cancelImage(img);
   clearPhoto();
   for (const url of thumbnailUrls) URL.revokeObjectURL(url);
   thumbnailUrls = [];
@@ -971,11 +1004,11 @@ button.onclick = async () => {
     }
     add("PRODUCTION_KEK_UNWRAP=PASS");
 
-    galleryCatalog = await loadG2Catalog();
-    add("G2_CATALOG_SHA256=PASS");
-    add("G2_CATALOG_AUTHENTICATED=PASS");
-    add("CATALOG_GENERATION=2");
-    add("CATALOG_ENTRY_COUNT=392");
+    galleryCatalog = await loadPhotoCatalog();
+    add("PHOTO_CATALOG_SHA256=PASS");
+    add("PHOTO_CATALOG_AUTHENTICATED=PASS");
+    add("CATALOG_GENERATION=" + EXPECTED_CATALOG_GENERATION);
+    add("CATALOG_ENTRY_COUNT=" + EXPECTED_PHOTO_COUNT);
 
     await renderGallery();
     clearButton.disabled = false;
