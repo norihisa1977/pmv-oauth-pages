@@ -928,6 +928,7 @@ button.onclick = async () => {
     add("PRODUCTION_MEDIA_ACCESS=READ_ONLY");
     await assertDeliveryContext();
     const handoff = await obtainOAuth(popup, nonce);
+    await waitUntilVisible();
     await ensureSessionModule();
     session.begin(handoff.expires_at);
     const runEpoch = session.epoch;
@@ -1005,7 +1006,7 @@ window.addEventListener("pageshow", () => { if (session && !session.active) expi
 document.addEventListener("visibilitychange", () => { if (document.hidden) expireSession(); });
 for (const event of ["pointerdown", "keydown", "touchstart"]) document.addEventListener(event, () => session?.touch(), {passive:true});
 
-let session = null, pendingOAuthCancel = null;
+let session = null;
 const pendingRequests = new Set();
 async function assertDeliveryContext() {
   if (!globalThis.isSecureContext || window.top !== window.self) throw new Error("DELIVERY_CONTEXT_DENIED");
@@ -1031,11 +1032,11 @@ async function ensureSessionModule() {
   }
 }
 function expireSession() {
-  pendingOAuthCancel?.();
+  const hadActiveSession = Boolean(session?.active || galleryToken || galleryKek);
   for (const request of pendingRequests) request.abort();
   pendingRequests.clear();
   clearGallery();
-  add("SESSION_EXPIRED_REAUTH_REQUIRED");
+  if (hadActiveSession) add("SESSION_EXPIRED_REAUTH_REQUIRED");
 }
 async function guardedFetch(url, init = {}) {
   if ((init.method || "GET") !== "GET") throw new Error("READ_ONLY_REQUEST_REQUIRED");
@@ -1054,7 +1055,7 @@ async function guardedFetch(url, init = {}) {
 function obtainOAuth(popup, nonce) {
   if (!popup) return Promise.reject(new Error("OAUTH_POPUP_BLOCKED"));
   return new Promise((resolve,reject)=>{
-    const done=(err,data)=>{clearTimeout(timer);window.removeEventListener("message",receive);pendingOAuthCancel=null;popup.close();err?reject(err):resolve(data);};
+    const done=(err,data)=>{clearTimeout(timer);window.removeEventListener("message",receive);popup.close();err?reject(err):resolve(data);};
     const receive=event=>{
       if (event.source!==popup || event.origin!==location.origin || event.data?.nonce!==nonce) return;
       const data=event.data;
@@ -1062,7 +1063,15 @@ function obtainOAuth(popup, nonce) {
       done(null,data);
     };
     const timer=setTimeout(()=>done(new Error("OAUTH_HANDOFF_TIMEOUT")),90000);
-    pendingOAuthCancel=()=>done(new Error("OAUTH_HANDOFF_CANCELLED"));
     window.addEventListener("message",receive);
+  });
+}
+function waitUntilVisible() {
+  if (!document.hidden) return Promise.resolve();
+  return new Promise((resolve,reject)=>{
+    const finish=()=>{clearTimeout(timer);document.removeEventListener("visibilitychange",changed);};
+    const changed=()=>{if(!document.hidden){finish();resolve();}};
+    const timer=setTimeout(()=>{finish();reject(new Error("OAUTH_RETURN_NOT_VISIBLE"));},10000);
+    document.addEventListener("visibilitychange",changed);
   });
 }
