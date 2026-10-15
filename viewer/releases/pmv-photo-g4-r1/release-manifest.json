@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "release_id": "pmv-photo-g4-r1",
+  "status": "CANDIDATE_READY_IPHONE_SAFARI_ACCEPTANCE",
+  "immutable_after_approval": true,
+  "assets": {
+    "index.html": {
+      "sha256": "34236abd6531b4580209b895b10102de23f80d8c7d696639daae53fba52a30e3",
+      "bytes": 308,
+      "executable": false
+    },
+    "manifest.webmanifest": {
+      "sha256": "b87607127ae05e6394949674a7749c5d3ef2c01fe2c7ded2471f815274fd698c",
+      "bytes": 379,
+      "executable": false
+    },
+    "pc7c-photo-oauth.html": {
+      "sha256": "6b5414503b072ea76ce8c854fa9810ff6b28718660f26b9c43f5dec20a24dc94",
+      "bytes": 1606,
+      "executable": false
+    },
+    "pc7c-photo-oauth.js": {
+      "sha256": "4e001b5c9d293d2a94dd5c59e5019552a596cb512a26489ab1a80879c154412e",
+      "bytes": 1352,
+      "executable": true
+    },
+    "pc7c-photo-view.html": {
+      "sha256": "ec50056e2aec042e3718da6ac50db592d85afd95d3450ec108f5efec6c21fa72",
+      "bytes": 2405,
+      "executable": false
+    },
+    "pc7c-photo-view.js": {
+      "sha256": "0afda5c027153dd39d8ecaa2a495f9bd729880925af27d48497b3ef56f6b57a1",
+      "bytes": 28610,
+      "executable": true
+    },
+    "photo-catalog-contract.js": {
+      "sha256": "dc09f913103891a79ad67b3df6130179548472f905908f2a357e1f9e0e866063",
+      "bytes": 3089,
+      "executable": true
+    },
+    "photo-catalog-release.json": {
+      "sha256": "d403e64781c9a3fe21dec5afeeb3e067519ea9ad749ffba1ac4999734c18eab6",
+      "bytes": 507,
+      "executable": false
+    },
+    "pmv-icon.svg": {
+      "sha256": "f4c10f188be15502a03d4e68162ad276e33e43b602b8b1464a32c8593e4291c5",
+      "bytes": 328,
+      "executable": false
+    },
+    "session-lifecycle.mjs": {
+      "sha256": "9ff2335cc590c54f74b6579d3d90e4941084f991b1e5360bc1c30ab4c7a7380e",
+      "bytes": 1286,
+      "executable": true
+    },
+    "vendor/libsodium-0.8.4/libsodium-sumo.mjs": {
+      "sha256": "4c94708f7e78eac7a32b29e2ce0ff96f4bd599d78c129f27bf8a061e20776c8c",
+      "bytes": 413353,
+      "executable": true
+    },
+    "vendor/libsodium-0.8.4/libsodium-wrappers.mjs": {
+      "sha256": "5f8560f2d9822d138ca4ff1a63cbb1c378115140f2905438d7458b514cb9f608",
+      "bytes": 122035,
+      "executable": true
+    }
+  }
+}
