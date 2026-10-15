@@ -1,4 +1,5 @@
 const MODULE_HASHES = {"session-lifecycle.mjs":"9ff2335cc590c54f74b6579d3d90e4941084f991b1e5360bc1c30ab4c7a7380e","photo-catalog-contract.js":"dc09f913103891a79ad67b3df6130179548472f905908f2a357e1f9e0e866063"};
+const OAUTH_HANDOFF_KEY = "pmv_g4_pc7c_photo_handoff";
 const photoCatalogScriptUrl = document.currentScript?.src || [...document.scripts].find(s => s.src && new URL(s.src).pathname.endsWith("/pc7c-photo-view.js"))?.src;
 if (!photoCatalogScriptUrl) throw new Error("PHOTO_CATALOG_ASSET_SCRIPT_MISSING");
 const photoCatalogAssetBase = new URL(".", photoCatalogScriptUrl);
@@ -920,15 +921,12 @@ button.onclick = async () => {
   button.disabled = true;
   let password = passwordEl.value;
   clearGallery();
-  const nonce = crypto.randomUUID();
-  const popup = window.open("./pc7c-photo-oauth.html#" + nonce, "_blank", "popup,width=480,height=650");
   lines.length = 0;
   let wrappingKey = null;
   try {
     add("PRODUCTION_MEDIA_ACCESS=READ_ONLY");
     await assertDeliveryContext();
-    const handoff = await obtainOAuth(popup, nonce);
-    await waitUntilVisible();
+    const handoff = consumeOAuthHandoff();
     await ensureSessionModule();
     session.begin(handoff.expires_at);
     const runEpoch = session.epoch;
@@ -992,7 +990,6 @@ button.onclick = async () => {
     if (wrappingKey instanceof Uint8Array && gallerySodium) gallerySodium.memzero(wrappingKey);
     password = null;
     button.disabled = false;
-    popup?.close();
   }
 };
 
@@ -1052,26 +1049,13 @@ async function guardedFetch(url, init = {}) {
     return {ok:response.ok,status:response.status,arrayBuffer:async()=>bytes,json:async()=>JSON.parse(new TextDecoder().decode(bytes))};
   } finally { clearTimeout(timer); pendingRequests.delete(controller); }
 }
-function obtainOAuth(popup, nonce) {
-  if (!popup) return Promise.reject(new Error("OAUTH_POPUP_BLOCKED"));
-  return new Promise((resolve,reject)=>{
-    const done=(err,data)=>{clearTimeout(timer);window.removeEventListener("message",receive);popup.close();err?reject(err):resolve(data);};
-    const receive=event=>{
-      if (event.source!==popup || event.origin!==location.origin || event.data?.nonce!==nonce) return;
-      const data=event.data;
-      if (data.type!=="PMV_G4_OAUTH" || typeof data.token!=="string" || !data.token || data.scope!=="https://www.googleapis.com/auth/drive.file" || !Number.isFinite(data.expires_at) || data.expires_at<=Date.now()+5000 || data.expires_at>Date.now()+3600000) return done(new Error("OAUTH_HANDOFF_INVALID"));
-      done(null,data);
-    };
-    const timer=setTimeout(()=>done(new Error("OAUTH_HANDOFF_TIMEOUT")),90000);
-    window.addEventListener("message",receive);
-  });
-}
-function waitUntilVisible() {
-  if (!document.hidden) return Promise.resolve();
-  return new Promise((resolve,reject)=>{
-    const finish=()=>{clearTimeout(timer);document.removeEventListener("visibilitychange",changed);};
-    const changed=()=>{if(!document.hidden){finish();resolve();}};
-    const timer=setTimeout(()=>{finish();reject(new Error("OAUTH_RETURN_NOT_VISIBLE"));},10000);
-    document.addEventListener("visibilitychange",changed);
-  });
+function consumeOAuthHandoff() {
+  const raw=sessionStorage.getItem(OAUTH_HANDOFF_KEY);
+  sessionStorage.removeItem(OAUTH_HANDOFF_KEY);
+  if(!raw)throw Error("OAUTH_HANDOFF_MISSING");
+  let data;
+  try{data=JSON.parse(raw);}catch{throw Error("OAUTH_HANDOFF_INVALID");}
+  const now=Date.now();
+  if(data?.v!==1||data.scope!=="https://www.googleapis.com/auth/drive.file"||typeof data.token!=="string"||!data.token||!Number.isFinite(data.created_at)||data.created_at>now+5000||!Number.isFinite(data.expires_at)||data.expires_at<=now+5000||data.expires_at>data.created_at+3600000)throw Error("OAUTH_HANDOFF_INVALID");
+  return data;
 }

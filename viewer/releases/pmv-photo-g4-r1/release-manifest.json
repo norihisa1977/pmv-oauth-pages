@@ -5,8 +5,8 @@
   "immutable_after_approval": true,
   "assets": {
     "index.html": {
-      "sha256": "34236abd6531b4580209b895b10102de23f80d8c7d696639daae53fba52a30e3",
-      "bytes": 308,
+      "sha256": "bee7b9936e26b0c880f4743ee0e6d9aedd4a110a9a29366a1ccd3d6dfb2cc650",
+      "bytes": 293,
       "executable": false
     },
     "manifest.webmanifest": {
@@ -15,23 +15,23 @@
       "executable": false
     },
     "pc7c-photo-oauth.html": {
-      "sha256": "6b5414503b072ea76ce8c854fa9810ff6b28718660f26b9c43f5dec20a24dc94",
+      "sha256": "21f9889c05297a6294c57d5ded3ca62caf30b5b1de2fad77bcf4dc28ae3fb98f",
       "bytes": 1606,
       "executable": false
     },
     "pc7c-photo-oauth.js": {
-      "sha256": "4e001b5c9d293d2a94dd5c59e5019552a596cb512a26489ab1a80879c154412e",
-      "bytes": 1352,
+      "sha256": "05f58ce6dc0cb456125d3b1e96870e21d06af01f9420d373ca79c215fd5e8f42",
+      "bytes": 1774,
       "executable": true
     },
     "pc7c-photo-view.html": {
-      "sha256": "2add368c54bb96e8df81f82b25b4f0673d52e8da87e9d3ea2e4bbdc146d3f138",
+      "sha256": "a9376253dd61d65f3939691cdd7951fcca7d0880ce74da9b33f1eb7f802d6dc0",
       "bytes": 2405,
       "executable": false
     },
     "pc7c-photo-view.js": {
-      "sha256": "d4b1259aad1b7bd467384cee67d4960f9078a665f1afdcb3af2202b47dad04b3",
-      "bytes": 29051,
+      "sha256": "6b3fc396c77e6737f0487adaeddd7622dd6a1ccd7f85cc6899591f3e0baeef9e",
+      "bytes": 28160,
       "executable": true
     },
     "photo-catalog-contract.js": {
