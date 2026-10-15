@@ -1,6 +1,6 @@
 // No browser storage. Deadlines are checked after synchronous Argon2 as well as on events.
 export class SessionLifecycle {
-  constructor({expire,visible=()=>true,now=()=>Date.now(),setTimer=setInterval,clearTimer=clearInterval}) {
+  constructor({expire,visible=()=>true,now=()=>Date.now(),setTimer=(fn,ms)=>globalThis.setInterval(fn,ms),clearTimer=id=>globalThis.clearInterval(id)}) {
     Object.assign(this,{expire,visible,now,setTimer,clearTimer});
     this.epoch=0;this.active=false;this.authorized=false;this.timer=null;
   }

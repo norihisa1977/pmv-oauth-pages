@@ -1,4 +1,4 @@
-const MODULE_HASHES = {"session-lifecycle.mjs":"9ff2335cc590c54f74b6579d3d90e4941084f991b1e5360bc1c30ab4c7a7380e","photo-catalog-contract.js":"dc09f913103891a79ad67b3df6130179548472f905908f2a357e1f9e0e866063"};
+const MODULE_HASHES = {"session-lifecycle.mjs":"54ae0a8c74811db792be74a6b64cb228351049a8b4f6bd9c8ec81de82fcf2758","photo-catalog-contract.js":"dc09f913103891a79ad67b3df6130179548472f905908f2a357e1f9e0e866063"};
 const OAUTH_HANDOFF_KEY = "pmv_g4_pc7c_photo_handoff";
 const photoCatalogScriptUrl = document.currentScript?.src || [...document.scripts].find(s => s.src && new URL(s.src).pathname.endsWith("/pc7c-photo-view.js"))?.src;
 if (!photoCatalogScriptUrl) throw new Error("PHOTO_CATALOG_ASSET_SCRIPT_MISSING");

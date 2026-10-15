@@ -25,12 +25,12 @@
       "executable": true
     },
     "pc7c-photo-view.html": {
-      "sha256": "a9376253dd61d65f3939691cdd7951fcca7d0880ce74da9b33f1eb7f802d6dc0",
+      "sha256": "01c16a3a1f7dda5b0d2d9107747aca931cbd74a7ddb5af971d1fcfa084d3339b",
       "bytes": 2405,
       "executable": false
     },
     "pc7c-photo-view.js": {
-      "sha256": "6b3fc396c77e6737f0487adaeddd7622dd6a1ccd7f85cc6899591f3e0baeef9e",
+      "sha256": "9a82cc44ba13bd5086d07fbbefaae2f941084c0f61239608e5ece2d458e0a02c",
       "bytes": 28160,
       "executable": true
     },
@@ -50,8 +50,8 @@
       "executable": false
     },
     "session-lifecycle.mjs": {
-      "sha256": "9ff2335cc590c54f74b6579d3d90e4941084f991b1e5360bc1c30ab4c7a7380e",
-      "bytes": 1286,
+      "sha256": "54ae0a8c74811db792be74a6b64cb228351049a8b4f6bd9c8ec81de82fcf2758",
+      "bytes": 1332,
       "executable": true
     },
     "vendor/libsodium-0.8.4/libsodium-sumo.mjs": {
