@@ -935,6 +935,7 @@ async function openCatalogPhoto(entry) {
     clearPhoto();
     add("SELECTED_PHOTO_DISPLAY=FAIL;ORDINAL=" + entry.ordinal);
     add("ERROR=" + String(e?.message || e));
+    add("REAUTH_REQUIRED=Return to OAuth and authorize again before retrying.");
   } finally {
     if (dek instanceof Uint8Array) gallerySodium.memzero(dek);
     if (manifestPlain instanceof Uint8Array) gallerySodium.memzero(manifestPlain);
