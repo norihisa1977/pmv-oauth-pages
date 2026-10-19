@@ -1108,8 +1108,18 @@ window.addEventListener("pageshow", () => { if (session && !session.active) expi
 document.addEventListener("visibilitychange", () => { if (document.hidden) expireSession(); });
 for (const event of ["pointerdown", "keydown", "touchstart"]) document.addEventListener(event, () => session?.touch(), {passive:true});
 
-if (!sessionStorage.getItem(OAUTH_HANDOFF_KEY)) requireFreshOAuth();
-else reauthHelpEl.hidden = true;
+try {
+  if (!sessionStorage.getItem(OAUTH_HANDOFF_KEY)) {
+    requireFreshOAuth();
+    add("OAUTH_HANDOFF_NOT_STAGED=REAUTH_REQUIRED");
+  } else {
+    reauthHelpEl.hidden = true;
+    add("OAUTH_HANDOFF_STAGED=PASS");
+  }
+} catch {
+  requireFreshOAuth();
+  add("OAUTH_HANDOFF_STORAGE_UNAVAILABLE=REAUTH_REQUIRED");
+}
 
 let session = null;
 const pendingRequests = new Set();
@@ -1159,8 +1169,11 @@ async function guardedFetch(url, init = {}) {
   } finally { clearTimeout(timer); pendingRequests.delete(controller); }
 }
 function consumeOAuthHandoff() {
-  const raw=sessionStorage.getItem(OAUTH_HANDOFF_KEY);
-  sessionStorage.removeItem(OAUTH_HANDOFF_KEY);
+  let raw;
+  try {
+    raw=sessionStorage.getItem(OAUTH_HANDOFF_KEY);
+    if(raw)sessionStorage.removeItem(OAUTH_HANDOFF_KEY);
+  } catch { throw Error("OAUTH_HANDOFF_STORAGE_UNAVAILABLE"); }
   if(!raw)throw Error("OAUTH_HANDOFF_MISSING");
   let data;
   try{data=JSON.parse(raw);}catch{throw Error("OAUTH_HANDOFF_INVALID");}
