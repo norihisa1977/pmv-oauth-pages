@@ -20,8 +20,12 @@ button.onclick=async()=>{
     if(!scopes.includes(SCOPE))throw Error("REQUIRED_SCOPE_MISSING");
     const expires=Number(r.expires_in),now=Date.now();
     if(!Number.isFinite(expires)||expires<=5||expires>3600)throw Error("TOKEN_EXPIRY_INVALID");
-    sessionStorage.setItem(HANDOFF_KEY,JSON.stringify({v:1,scope:SCOPE,token:r.access_token,created_at:now,expires_at:now+expires*1000}));
-    r.access_token=null;report.textContent="OAUTH_HANDOFF_STAGED";location.replace("./pc7c-photo-view.html");
+    const handoff=JSON.stringify({v:1,scope:SCOPE,token:r.access_token,created_at:now,expires_at:now+expires*1000});
+    try {
+     sessionStorage.setItem(HANDOFF_KEY,handoff);
+     if(sessionStorage.getItem(HANDOFF_KEY)!==handoff)throw Error("OAUTH_HANDOFF_STORAGE_VERIFY_FAILED");
+    }catch(e){throw Error("OAUTH_HANDOFF_STORAGE_FAILED");}
+    r.access_token=null;report.textContent="OAUTH_HANDOFF_STAGED=PASS";location.replace("./pc7c-photo-view.html");
    }catch(e){if(r&&"access_token" in r)r.access_token=null;report.textContent="OAUTH_FAILED="+String(e?.message||e);}
   },error_callback:()=>{pending=false;button.disabled=false;report.textContent="OAUTH_CANCELLED";}}).requestAccessToken({prompt:""});
  }catch(e){pending=false;button.disabled=false;report.textContent=String(e.message);}
