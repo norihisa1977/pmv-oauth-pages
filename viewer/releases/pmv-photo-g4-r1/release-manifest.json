@@ -15,23 +15,23 @@
       "executable": false
     },
     "pc7c-photo-oauth.html": {
-      "sha256": "21f9889c05297a6294c57d5ded3ca62caf30b5b1de2fad77bcf4dc28ae3fb98f",
+      "sha256": "fd3643fc63380d74a1a15e0a85ac436ab539fd774475b04e4115ab2e7cb74817",
       "bytes": 1606,
       "executable": false
     },
     "pc7c-photo-oauth.js": {
-      "sha256": "05f58ce6dc0cb456125d3b1e96870e21d06af01f9420d373ca79c215fd5e8f42",
-      "bytes": 1774,
+      "sha256": "27f7b5eca6f09630b24a65195bdefd5fa40d8b96506be89bc971e644a53ef53a",
+      "bytes": 1983,
       "executable": true
     },
     "pc7c-photo-view.html": {
-      "sha256": "d7bcfd6d628967279933ae363981b0db5b0cc0ef53447a5b1bfe61ccee794d97",
+      "sha256": "0842799338226f78ac6d49d2ee9eda9909918e317defe801d028401068551fa5",
       "bytes": 4427,
       "executable": false
     },
     "pc7c-photo-view.js": {
-      "sha256": "d3eff57e9b4e2cf59a11306d4a71dbb1b88bf22b203fdd1d945d26f5388009c2",
-      "bytes": 32859,
+      "sha256": "e10f1c4b87a79401d9fdab0d714ab6a80a91478c39d50e2a8f4d6ee24200a7b2",
+      "bytes": 33161,
       "executable": true
     },
     "photo-catalog-contract.js": {
