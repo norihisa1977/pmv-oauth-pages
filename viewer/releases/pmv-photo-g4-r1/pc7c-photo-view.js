@@ -29,6 +29,13 @@ const clearButton =
 
 const passwordEl =
   document.getElementById("password");
+const reauthHelpEl = document.getElementById("reauthHelp");
+function requireFreshOAuth() {
+  passwordEl.value = "";
+  passwordEl.disabled = true;
+  button.disabled = true;
+  reauthHelpEl.hidden = false;
+}
 
 const photoEl = document.getElementById("photo");
 const photoGridEl = document.getElementById("photoGrid");
@@ -1019,6 +1026,7 @@ button.onclick = async () => {
     if (!password) throw new Error("PMV_PASSWORD_EMPTY");
     await assertDeliveryContext();
     const handoff = consumeOAuthHandoff();
+    reauthHelpEl.hidden = true;
     await ensureSessionModule();
     session.begin(handoff.expires_at);
     const runEpoch = session.epoch;
@@ -1081,6 +1089,7 @@ button.onclick = async () => {
       add("REAUTH_REQUIRED=Authorize Google Drive again before retrying.");
     }
     clearGallery();
+    if (String(e?.message || e) !== "PMV_PASSWORD_EMPTY") requireFreshOAuth();
   } finally {
     if (wrappingKey instanceof Uint8Array && gallerySodium) gallerySodium.memzero(wrappingKey);
     password = null;
@@ -1098,6 +1107,9 @@ window.addEventListener("pagehide", expireSession);
 window.addEventListener("pageshow", () => { if (session && !session.active) expireSession(); });
 document.addEventListener("visibilitychange", () => { if (document.hidden) expireSession(); });
 for (const event of ["pointerdown", "keydown", "touchstart"]) document.addEventListener(event, () => session?.touch(), {passive:true});
+
+if (!sessionStorage.getItem(OAUTH_HANDOFF_KEY)) requireFreshOAuth();
+else reauthHelpEl.hidden = true;
 
 let session = null;
 const pendingRequests = new Set();
@@ -1129,6 +1141,7 @@ function expireSession() {
   for (const request of pendingRequests) request.abort();
   pendingRequests.clear();
   clearGallery();
+  requireFreshOAuth();
   if (hadActiveSession) add("SESSION_EXPIRED_REAUTH_REQUIRED");
 }
 async function guardedFetch(url, init = {}) {
