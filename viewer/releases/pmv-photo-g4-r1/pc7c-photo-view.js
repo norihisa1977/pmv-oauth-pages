@@ -32,6 +32,84 @@ const passwordEl =
 
 const photoEl = document.getElementById("photo");
 const photoGridEl = document.getElementById("photoGrid");
+const photoModalEl = document.getElementById("photoModal");
+const photoCloseEl = document.getElementById("photoClose");
+const photoStatusEl = document.getElementById("photoStatus");
+const viewerContentEl = document.getElementById("viewerContent");
+let photoModalState = null;
+
+function syncPhotoViewport() {
+  if (!photoModalState) return;
+  const viewport = window.visualViewport;
+  for (const [name, value] of Object.entries(viewport ? {
+    top: viewport.offsetTop, left: viewport.offsetLeft,
+    width: viewport.width, height: viewport.height
+  } : {})) photoModalEl.style[name] = value + "px";
+}
+function showPhotoModal() {
+  if (photoModalState) return;
+  const body = document.body, root = document.documentElement;
+  const width = body.getBoundingClientRect().width;
+  photoModalState = {
+    x: window.scrollX, y: window.scrollY, focus: document.activeElement,
+    position: body.style.position, top: body.style.top, left: body.style.left,
+    width: body.style.width, overflow: body.style.overflow,
+    rootOverflow: root.style.overflow, scrollBehavior: root.style.scrollBehavior,
+    inert: viewerContentEl.inert, ariaHidden: viewerContentEl.getAttribute("aria-hidden")
+  };
+  body.style.position = "fixed";
+  body.style.top = -photoModalState.y + "px";
+  body.style.left = -photoModalState.x + "px";
+  body.style.width = width + "px";
+  body.style.overflow = "hidden";
+  root.style.overflow = "hidden";
+  photoModalEl.hidden = false;
+  photoStatusEl.hidden = false;
+  syncPhotoViewport();
+  photoCloseEl.focus({preventScroll:true});
+  viewerContentEl.inert = true;
+  viewerContentEl.setAttribute("aria-hidden", "true");
+}
+function hidePhotoModal() {
+  if (!photoModalState) return;
+  const state = photoModalState, body = document.body, root = document.documentElement;
+  photoModalState = null;
+  photoModalEl.hidden = true;
+  for (const name of ["top", "left", "width", "height"]) photoModalEl.style[name] = "";
+  for (const name of ["position", "top", "left", "width", "overflow"]) body.style[name] = state[name];
+  root.style.overflow = state.rootOverflow;
+  root.style.scrollBehavior = "auto";
+  viewerContentEl.inert = state.inert;
+  if (state.ariaHidden === null) viewerContentEl.removeAttribute("aria-hidden");
+  else viewerContentEl.setAttribute("aria-hidden", state.ariaHidden);
+  if (!document.hidden && state.focus?.isConnected) state.focus.focus({preventScroll:true});
+  window.scrollTo(state.x, state.y);
+  root.style.scrollBehavior = state.scrollBehavior;
+  // Restore again after layout/scroll anchoring settles when fixed positioning ends.
+  requestAnimationFrame(() => {
+    if (photoModalState) return;
+    const behavior = root.style.scrollBehavior;
+    root.style.scrollBehavior = "auto";
+    window.scrollTo(state.x, state.y);
+    root.style.scrollBehavior = behavior;
+  });
+}
+function dismissPhotoModal() {
+  selectionEpoch++;
+  clearPhoto();
+}
+photoCloseEl.onclick = dismissPhotoModal;
+photoModalEl.addEventListener("touchmove", event => {
+  if (event.touches.length === 1) event.preventDefault();
+}, {passive:false});
+document.addEventListener("keydown", event => {
+  if (!photoModalState) return;
+  if (event.key === "Escape") { event.preventDefault(); dismissPhotoModal(); }
+  else if (event.key === "Tab") { event.preventDefault(); photoCloseEl.focus({preventScroll:true}); }
+});
+window.addEventListener("resize", syncPhotoViewport);
+window.visualViewport?.addEventListener("resize", syncPhotoViewport);
+window.visualViewport?.addEventListener("scroll", syncPhotoViewport);
 
 let gallerySodium = null;
 let galleryToken = null;
@@ -650,6 +728,7 @@ function detectMime(bytes) {
 }
 
 function clearPhoto() {
+  hidePhotoModal();
   cancelImage(photoEl);
   if (photoUrl) {
     URL.revokeObjectURL(
@@ -804,6 +883,7 @@ async function loadThumbnail(entry, img, epoch) {
 async function openCatalogPhoto(entry) {
   const epoch = galleryEpoch, selected = ++selectionEpoch;
   clearPhoto();
+  showPhotoModal();
   let dek = null;
   let manifestPlain = null;
   let photoPlain = null;
@@ -847,6 +927,7 @@ async function openCatalogPhoto(entry) {
     await displayImage(photoEl, photoUrl);
     if (epoch !== galleryEpoch || selected !== selectionEpoch) throw new Error("SELECTION_CANCELLED");
     photoEl.hidden = false;
+    photoStatusEl.hidden = true;
     clearButton.disabled = false;
     add("SELECTED_PHOTO_DISPLAY=PASS;ORDINAL=" + entry.ordinal);
   } catch (e) {
@@ -994,7 +1075,7 @@ button.onclick = async () => {
 };
 
 photoEl.onclick = () => {
-  if (!photoEl.hidden) clearPhoto();
+  if (!photoEl.hidden) dismissPhotoModal();
 };
 
 clearButton.onclick = expireSession;
