@@ -935,7 +935,10 @@ async function openCatalogPhoto(entry) {
     clearPhoto();
     add("SELECTED_PHOTO_DISPLAY=FAIL;ORDINAL=" + entry.ordinal);
     add("ERROR=" + String(e?.message || e));
-    add("REAUTH_REQUIRED=Return to OAuth and authorize again before retrying.");
+    if (String(e?.message || e) !== "PMV_PASSWORD_EMPTY") {
+      add("REAUTH_REQUIRED=Return to OAuth and authorize again before retrying.");
+      button.disabled = true;
+    }
   } finally {
     if (dek instanceof Uint8Array) gallerySodium.memzero(dek);
     if (manifestPlain instanceof Uint8Array) gallerySodium.memzero(manifestPlain);
@@ -1007,6 +1010,7 @@ button.onclick = async () => {
   let wrappingKey = null;
   try {
     add("PRODUCTION_MEDIA_ACCESS=READ_ONLY");
+    if (!password) throw new Error("PMV_PASSWORD_EMPTY");
     await assertDeliveryContext();
     const handoff = consumeOAuthHandoff();
     await ensureSessionModule();
@@ -1071,7 +1075,8 @@ button.onclick = async () => {
   } finally {
     if (wrappingKey instanceof Uint8Array && gallerySodium) gallerySodium.memzero(wrappingKey);
     password = null;
-    button.disabled = false;
+    if (String(reportEl.textContent).includes("REAUTH_REQUIRED=")) button.disabled = true;
+    else button.disabled = false;
   }
 };
 
