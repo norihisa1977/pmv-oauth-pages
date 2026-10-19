@@ -1071,6 +1071,9 @@ button.onclick = async () => {
   } catch (e) {
     add("PC7C_MULTI_PHOTO_RESULT=FAIL");
     add("ERROR=" + String(e?.message || e));
+    if (String(e?.message || e) !== "PMV_PASSWORD_EMPTY") {
+      add("REAUTH_REQUIRED=Authorize Google Drive again before retrying.");
+    }
     clearGallery();
   } finally {
     if (wrappingKey instanceof Uint8Array && gallerySodium) gallerySodium.memzero(wrappingKey);
