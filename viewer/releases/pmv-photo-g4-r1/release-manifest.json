@@ -25,13 +25,13 @@
       "executable": true
     },
     "pc7c-photo-view.html": {
-      "sha256": "ac442dd88d1dcd70137e8e75a83f244f07237351d7b569e17088a624ddb4a928",
-      "bytes": 4285,
+      "sha256": "e3b239d32a9e2d3ad8c48439b0b701681a6bd72a40223b014ea3b9f8badf9165",
+      "bytes": 4413,
       "executable": false
     },
     "pc7c-photo-view.js": {
-      "sha256": "c1357d5a01059b82c13387f3d9daae35bd26a598fd92d008f07c3d1c8516d7fc",
-      "bytes": 31835,
+      "sha256": "c0a8ae0741a4938f994524c63ef43c46bc4a07652ee44871c032c53a1c00ad3e",
+      "bytes": 32087,
       "executable": true
     },
     "photo-catalog-contract.js": {
