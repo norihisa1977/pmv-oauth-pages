@@ -38,6 +38,23 @@ img{
   margin-top:18px
 }
 #photoGrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:10px; } #photoGrid[hidden] { display:none; } #photoGrid button { padding:4px; background:transparent; border:1px solid #bbb; } #photoGrid img { width:100%; margin:0; }
+/* Keep margin collapsing stable when the body is fixed for the modal. */
+#viewerContent { display:flow-root; }
+/* Selected-photo overlay stays in the visual viewport, including Safari toolbars. */
+.photo-modal[hidden] { display:none; }
+.photo-modal { position:fixed; inset:0; z-index:1000; box-sizing:border-box;
+  display:flex; flex-direction:column; gap:10px; background:rgba(0,0,0,.96); color:white;
+  height:100%; height:100dvh; overflow:hidden; overscroll-behavior:none;
+  padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right))
+    max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left)); }
+#photoClose { align-self:flex-end; flex:0 0 auto; min-height:44px; min-width:44px; }
+.photo-canvas { flex:1 1 0; min-height:0; min-width:0; display:grid; place-items:center; overflow:hidden; }
+#photoModal #photo { grid-area:1/1; width:100%; height:100%; max-width:100%; max-height:100%;
+  min-width:0; min-height:0; margin:0; object-fit:contain; touch-action:pinch-zoom; }
+#photoModal #photo[hidden], #photoStatus[hidden] { display:none; }
+#photoStatus { grid-area:1/1; margin:0; }
+.visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
 </style>
 <meta name="theme-color" content="#111111">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -47,6 +64,7 @@ img{
 <link rel="apple-touch-icon" href="./pmv-icon.svg">
 </head>
 <body>
+<main id="viewerContent">
 
 <h1>PMV Photo G4 Candidate Photo View</h1>
 
@@ -80,14 +98,19 @@ Clear Photos
 <pre id="report">READY</pre>
 <div id="photoGrid" aria-label="Photos" hidden></div>
 
-<img
-  id="photo"
-  alt="PMV Production photo"
-  hidden>
+</main>
+<div id="photoModal" class="photo-modal" role="dialog" aria-modal="true" aria-labelledby="photoModalTitle" hidden>
+  <h2 id="photoModalTitle" class="visually-hidden">Selected photo</h2>
+  <button id="photoClose" type="button" aria-label="Close selected photo">閉じる</button>
+  <div class="photo-canvas">
+    <p id="photoStatus" role="status">写真を読み込んでいます…</p>
+    <img id="photo" alt="PMV Production photo" hidden>
+  </div>
+</div>
 
 <script
   type="module"
-  src="./pc7c-photo-view.js" integrity="sha256-moLMRLoTvVCG0H+776ri+UEITA9hI5YI5ezi1FjgoCw=" crossorigin="anonymous">
+  src="./pc7c-photo-view.js" integrity="sha256-/taG0qWKdZpidYV+E0oucwBVqNkkfOnworGqWMIxT88=" crossorigin="anonymous">
 </script>
 
 </body>
