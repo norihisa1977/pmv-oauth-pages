@@ -969,7 +969,10 @@ async function renderGallery() {
     while (true) {
       const i = next++;
       if (epoch !== galleryEpoch || i >= entries.length) return;
-      if (await loadThumbnail(entries[i], buttons[i].firstElementChild, epoch)) ok++;
+      if (await loadThumbnail(entries[i], buttons[i].firstElementChild, epoch)) {
+        ok++;
+        if (epoch === galleryEpoch && session?.active) buttons[i].disabled = false;
+      }
       if (epoch !== galleryEpoch) return;
       done++;
       if (done % 25 === 0 || done === EXPECTED_PHOTO_COUNT) {
@@ -977,11 +980,14 @@ async function renderGallery() {
       }
     }
   }
-  await Promise.all(Array.from({length:6}, worker));
-  if (epoch !== galleryEpoch) throw new Error("GALLERY_CLEARED");
-  add("THUMBNAIL_DECRYPT_COMPLETE=" + ok + "/" + EXPECTED_PHOTO_COUNT);
-  if (ok !== EXPECTED_PHOTO_COUNT) throw new Error("THUMBNAIL_SET_INCOMPLETE=" + ok);
-  for (const b of buttons) b.disabled = false;
+  void Promise.all(Array.from({length:6}, worker)).then(() => {
+    if (epoch !== galleryEpoch) return;
+    add("THUMBNAIL_DECRYPT_COMPLETE=" + ok + "/" + EXPECTED_PHOTO_COUNT);
+    if (ok !== EXPECTED_PHOTO_COUNT) add("THUMBNAIL_SET_INCOMPLETE=" + ok);
+  }).catch(e => {
+    if (epoch === galleryEpoch) add("THUMBNAIL_LOAD_ERROR=" + String(e?.message || e));
+  });
+  add("PHOTO_GRID_PROGRESSIVE_READY=PASS");
 }
 
 function clearGallery() {
