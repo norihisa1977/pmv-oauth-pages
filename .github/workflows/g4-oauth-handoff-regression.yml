@@ -1,0 +1,23 @@
+name: G4 OAuth handoff regression
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'viewer/releases/pmv-photo-g4-r1/pc7c-photo-oauth.js'
+      - 'viewer/releases/pmv-photo-g4-r1/pc7c-photo-view.js'
+      - 'viewer/releases/pmv-photo-g4-r1/tests/oauth-handoff.test.cjs'
+      - '.github/workflows/g4-oauth-handoff-regression.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  handoff-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run G4 OAuth handoff regression
+        run: node viewer/releases/pmv-photo-g4-r1/tests/oauth-handoff.test.cjs
