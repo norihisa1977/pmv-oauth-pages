@@ -29,7 +29,7 @@ function consumer(storage) {
  const start = viewer.indexOf(marker);
  assert.ok(start>=0);
  const source = viewer.slice(start);
- const ctx={sessionStorage:storage,Date,Error};
+ const ctx={sessionStorage:storage,Date,Error,OAUTH_HANDOFF_KEY:KEY};
  vm.runInNewContext(source+'\nthis.consume=consumeOAuthHandoff;',ctx,{timeout:1000});
  return ()=>ctx.consume();
 }
